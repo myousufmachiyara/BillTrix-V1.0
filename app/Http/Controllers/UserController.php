@@ -19,12 +19,6 @@ class UserController extends Controller
         return view('users.index', compact('users', 'roles'));
     }
 
-    public function create()
-    {
-        $roles = Role::all();
-        return view('users.create', compact('roles'));
-    }
-
     public function store(Request $request)
     {
         // Validate request
@@ -99,12 +93,6 @@ class UserController extends Controller
         }
     }
 
-    public function edit(User $user)
-    {
-        $roles = Role::all();
-        return view('users.edit', compact('user', 'roles'));
-    }
-
     public function show($id)
     {
         $user = User::with('roles:id,name')->findOrFail($id);
@@ -140,6 +128,48 @@ class UserController extends Controller
         $user->save();
 
         return redirect()->route('users.index')->with('success', 'Password changed successfully.');
+    }
+
+    public function changeMyPassword(Request $request)
+    {
+        // Validate — note: 'same' rule compares to another field in the request,
+        // not to a Laravel 'confirmed' convention. This matches the form field names.
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'current_password'     => 'required|string',
+            'new_password'         => 'required|string|min:8',
+            'new_password_confirmation' => 'required|string|same:new_password',
+        ], [
+            'new_password.min'                  => 'New password must be at least 8 characters.',
+            'new_password_confirmation.same'    => 'Passwords do not match.',
+            'current_password.required'         => 'Please enter your current password.',
+        ]);
+    
+        // Return JSON so the AJAX handler in app.blade.php can read it
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validator->errors()->all(),
+            ], 422);
+        }
+    
+        $user = auth()->user();
+    
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'errors'  => ['Current password is incorrect.'],
+            ], 422);
+        }
+    
+        $user->password = Hash::make($request->new_password);
+        $user->save();
+    
+        Log::info('[Auth] Password changed', ['user_id' => $user->id]);
+    
+        return response()->json([
+            'success' => true,
+            'message' => 'Password changed successfully.',
+        ]);
     }
 
     public function toggleActive($id)

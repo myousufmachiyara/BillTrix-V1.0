@@ -5,15 +5,13 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Attribute;
 use App\Models\AttributeValue;
-use \App\Models\Purity;
 
 class AttributeController extends Controller
 {
     public function index()
     {
         $attributes = Attribute::with('values')->get();
-        $purities   = Purity::all();
-        return view('products.attributes', compact('attributes', 'purities'));
+        return view('products.attributes', compact('attributes'));
     }
 
     public function store(Request $request)

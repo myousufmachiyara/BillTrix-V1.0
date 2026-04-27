@@ -46,11 +46,26 @@ class LoginController extends Controller
 
         if (! $login) {
             $this->incrementLoginAttempts($request); // 🚨 Count failed login
-        } else {
-            $this->clearLoginAttempts($request); // ✅ Reset on success
+            return false;
         }
 
-        return $login;
+        // ✅ Credentials matched — now check if account is active
+        $user = $this->guard()->user();
+
+        if (! $user->is_active) {
+            $this->guard()->logout(); // Kick them out immediately
+            \Log::warning('🚫 Inactive user attempted login.', [
+                'username' => $request->input($this->username()),
+                'ip'       => $request->ip(),
+            ]);
+
+            throw ValidationException::withMessages([
+                $this->username() => ['Your account has been deactivated. Please contact the administrator.'],
+            ]);
+        }
+
+        $this->clearLoginAttempts($request); // ✅ Reset on success
+        return true;
     }
 
     /**

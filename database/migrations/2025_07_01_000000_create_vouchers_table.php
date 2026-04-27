@@ -12,35 +12,21 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('vouchers', function (Blueprint $table) {
-            $table->id();
-            $table->string('voucher_no')->unique();
-            $table->string('voucher_type', 50); // flexible: 'purchase', 'sale', 'payment', 'receipt', 'journal', 'purchase_return', 'sale_return', etc.
-            $table->date('voucher_date');
-            
-            // Reference to source document (polymorphic)
-            $table->string('reference_type')->nullable(); // e.g., 'App\Models\PurchaseInvoice'
-            $table->unsignedBigInteger('reference_id')->nullable(); // e.g., purchase_invoice.id
-            
-            // Simple vouchers (single Dr/Cr pair) - for payment/receipt vouchers
-            $table->unsignedBigInteger('ac_dr_sid')->nullable(); 
-            $table->unsignedBigInteger('ac_cr_sid')->nullable();
-            $table->decimal('amount', 15, 2)->nullable(); // amount for simple vouchers
-            
+            $table->id(); 
+            $table->string('voucher_type', 50); // flexible, can be 'payment', 'receipt', 'journal', or any future type
+            $table->date('date');
+            $table->unsignedBigInteger('ac_dr_sid'); 
+            $table->unsignedBigInteger('ac_cr_sid'); 
+            $table->decimal('amount', 12, 2);
+            $table->string('reference')->nullable();
             $table->text('remarks')->nullable();
+            $table->string('description')->nullable();
             $table->json('attachments')->nullable();
-            
-            $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
             $table->timestamps();
             $table->softDeletes();
-            
-            // Foreign keys
-            $table->foreign('ac_dr_sid')->references('id')->on('chart_of_accounts')->onDelete('restrict');
-            $table->foreign('ac_cr_sid')->references('id')->on('chart_of_accounts')->onDelete('restrict');
-            
-            // Indexes
-            $table->index(['reference_type', 'reference_id']);
-            $table->index('voucher_date');
-            $table->index('voucher_type');
+
+            $table->foreign('ac_dr_sid')->references('id')->on('chart_of_accounts')->onDelete('cascade');
+            $table->foreign('ac_cr_sid')->references('id')->on('chart_of_accounts')->onDelete('cascade');
         });
     }
 

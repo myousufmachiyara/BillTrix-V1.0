@@ -27,9 +27,7 @@
             <thead>
               <tr>
                 <th>S.No</th>
-                <th>Image</th>
                 <th>Item Name</th>
-                <th>SKU</th>
                 <th>Category</th>
                 <th>Action</th>
               </tr>
@@ -38,15 +36,7 @@
               @foreach($products as $index => $product)
               <tr>
                 <td>{{ $index + 1 }}</td>
-                <td>
-                  @if($product->images->first())
-                    <img src="{{ asset('storage/' . $product->images->first()->image_path) }}" width="60" height="60" style="object-fit:cover;border-radius:5px;">
-                  @else
-                    <span class="text-muted">No Image</span>
-                  @endif
-                </td>
                 <td>{{ $product->name }}</td>
-                <td>{{ $product->sku }}</td>
                 <td>
                   @if($product->category || $product->subcategory)
                     {{ $product->category->name ?? '' }}
@@ -71,8 +61,6 @@
           </table>
         </div>
       </div>
-
-
     </section>
   </div>
 </div>

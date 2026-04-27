@@ -139,4 +139,11 @@
     </div>
   </div>
 </div>
+<script>
+  $(document).ready(function () {
+    $('#datatable-subcategories').DataTable({
+      "pageLength": 100
+    });
+  });
+</script>
 @endsection

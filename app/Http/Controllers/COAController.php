@@ -10,102 +10,118 @@ use Illuminate\Validation\Rule;
 
 class COAController extends Controller
 {
+    // ─────────────────────────────────────────────────────────────
+    // Canonical list of valid account types.
+    // Must match the blade dropdown values exactly.
+    // ─────────────────────────────────────────────────────────────
+    private const ACCOUNT_TYPES = [
+        'customer',
+        'vendor',
+        'cash',
+        'bank',
+        'inventory',
+        'liability',
+        'equity',
+        'revenue',
+        'cogs',
+        'expenses',
+        'receivable',   // ← add: accounts that owe you money (loans given out)
+        'payable',      // ← add: accounts you owe money to (loans taken)
+    ];
 
     public function index(Request $request)
     {
-        $subHeadOfAccounts = SubHeadOfAccounts::with('headOfAccount')->get();
+        $subHeadOfAccounts = SubHeadOfAccounts::with('headOfAccount')->orderBy('id')->get();
 
         $query = ChartOfAccounts::with('subHeadOfAccount');
 
-        if ($request->filled('subhead') && $request->subhead != 'all') {
+        if ($request->filled('subhead') && $request->subhead !== 'all') {
             $query->where('shoa_id', $request->subhead);
         }
 
-        $chartOfAccounts = $query->get();
+        $chartOfAccounts = $query->latest()->get();
 
-        return view('accounts.coa', compact('chartOfAccounts','subHeadOfAccounts'));
+        return view('accounts.coa', compact('chartOfAccounts', 'subHeadOfAccounts'));
     }
 
     public function store(Request $request)
     {
         try {
-            Log::info('COA Store Method Called', ['user_id' => auth()->id(), 'request' => $request->all()]);
+            Log::info('[COA] Store called', ['user_id' => auth()->id()]);
 
             $validated = $request->validate([
-                'shoa_id' => 'required|exists:sub_head_of_accounts,id',
-                'name' => [
+                'shoa_id'      => 'required|exists:sub_head_of_accounts,id',
+                'name'         => [
                     'required',
                     'string',
                     'max:255',
                     Rule::unique('chart_of_accounts')->whereNull('deleted_at'),
                 ],
-                'account_type' => 'nullable|string|max:255',
-                'visibility' => 'required|in:public,private', // ✅ NEW VALIDATION
-                'receivables' => 'required|numeric',
-                'payables' => 'required|numeric',
+                // FIX: validate against canonical list so junk values can't be saved
+                'account_type' => ['nullable', 'string', Rule::in(self::ACCOUNT_TYPES)],
+                'receivables'  => 'required|numeric',
+                'payables'     => 'required|numeric',
                 'credit_limit' => 'required|numeric',
                 'opening_date' => 'required|date',
-                'remarks' => 'nullable|string|max:800',
-                'address' => 'nullable|string|max:250',
-                'phone_no' => 'nullable|string|max:250',
+                'remarks'      => 'nullable|string|max:800',
+                'address'      => 'nullable|string|max:250',
+                'contact_no'   => 'nullable|string|max:250',
             ]);
 
-            $subHead = SubHeadOfAccounts::findOrFail($request->shoa_id);
-            $hoaCode = $subHead->hoa_id;
-            $shoaCode = str_pad($subHead->id, 2, '0', STR_PAD_LEFT);
-            $prefix = $hoaCode . $shoaCode;
+            // ── Auto-generate account code ────────────────────────
+            $subHead  = SubHeadOfAccounts::findOrFail($request->shoa_id);
+            $prefix   = $subHead->hoa_id . str_pad($subHead->id, 2, '0', STR_PAD_LEFT);
 
-            // ✅ Include soft-deleted records
             $existingCodes = ChartOfAccounts::withTrashed()
                 ->where('account_code', 'like', $prefix . '%')
                 ->pluck('account_code')
-                ->map(function ($code) use ($prefix) {
-                    return intval(substr($code, strlen($prefix)));
-                })
+                ->map(fn($code) => intval(substr($code, strlen($prefix))))
                 ->sort()
                 ->values();
 
-            $nextNumber = $existingCodes->last() + 1;
-            $coaCode = str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
-            $accountCode = $prefix . $coaCode;
+            // FIX: handle empty collection — last() returns null on empty
+            $nextNumber  = ($existingCodes->isEmpty() ? 0 : $existingCodes->last()) + 1;
+            $accountCode = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
 
-            Log::info('Generated Unique Account Code', ['account_code' => $accountCode]);
+            Log::info('[COA] Generated account code', ['code' => $accountCode]);
 
             $account = ChartOfAccounts::create([
-                'shoa_id' => $request->shoa_id,
+                'shoa_id'      => $request->shoa_id,
                 'account_code' => $accountCode,
-                'name' => $request->name,
+                'name'         => $request->name,
                 'account_type' => $request->account_type,
-                'visibility' => $request->visibility, // ✅ NEW FIELD
-                'receivables' => $request->receivables,
-                'payables' => $request->payables,
+                'receivables'  => $request->receivables,
+                'payables'     => $request->payables,
                 'credit_limit' => $request->credit_limit,
                 'opening_date' => $request->opening_date,
-                'remarks' => $request->remarks,
-                'address' => $request->address,
-                'phone_no' => $request->phone_no,
-                'created_by' => auth()->id(),
-                'updated_by' => auth()->id(),
+                'remarks'      => $request->remarks,
+                'address'      => $request->address,
+                'contact_no'   => $request->contact_no,
+                'created_by'   => auth()->id(),
+                'updated_by'   => auth()->id(),
             ]);
 
-            Log::info('Account Successfully Created', ['account' => $account]);
+            Log::info('[COA] Account created', ['id' => $account->id, 'code' => $accountCode]);
 
-            return redirect()->route('coa.index')->with('success', 'Chart of Account created successfully.');
+            return redirect()->route('coa.index')
+                ->with('success', 'Account created successfully.');
 
         } catch (\Exception $e) {
-            Log::error('Error in COA Store', [
-                'error_message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'user_id' => auth()->id(),
+            Log::error('[COA] Store error', [
+                'message' => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
             ]);
 
-            return redirect()->back()->with('error', 'Something went wrong. Please check logs.');
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Something went wrong: ' . $e->getMessage());
         }
     }
 
+    // Returns JSON for the edit modal AJAX call
     public function edit($id)
     {
-        $account = ChartOfAccounts::findOrFail($id);
+        $account = ChartOfAccounts::with('subHeadOfAccount')->findOrFail($id);
         return response()->json($account);
     }
 
@@ -113,40 +129,48 @@ class COAController extends Controller
     {
         try {
             $request->validate([
-                'shoa_id' => 'required|exists:sub_head_of_accounts,id',
-                'name' => 'required|string|max:255|unique:chart_of_accounts,name,' . $id,
-                'account_type' => 'nullable|string|max:255',
-                'visibility' => 'required|in:public,private', // ✅ NEW VALIDATION
-                'receivables' => 'required|numeric',
-                'payables' => 'required|numeric',
-                'opening_date' => 'required|date',
+                'shoa_id'      => 'required|exists:sub_head_of_accounts,id',
+                'name'         => [
+                    'required',
+                    'string',
+                    'max:255',
+                    // FIX: ignore the current record when checking uniqueness
+                    Rule::unique('chart_of_accounts')->ignore($id)->whereNull('deleted_at'),
+                ],
+                'account_type' => ['nullable', 'string', Rule::in(self::ACCOUNT_TYPES)],
+                'receivables'  => 'required|numeric',
+                'payables'     => 'required|numeric',
                 'credit_limit' => 'required|numeric',
-                'remarks' => 'nullable|string|max:800',
-                'address' => 'nullable|string|max:250',
-                'phone_no' => 'nullable|string|max:250',
+                'opening_date' => 'required|date',
+                'remarks'      => 'nullable|string|max:800',
+                'address'      => 'nullable|string|max:250',
+                'contact_no'   => 'nullable|string|max:250',
             ]);
 
             $account = ChartOfAccounts::findOrFail($id);
 
-            // ✅ Update fields safely
             $account->update([
                 'shoa_id'      => $request->shoa_id,
                 'name'         => $request->name,
                 'account_type' => $request->account_type,
-                'visibility'   => $request->visibility, // ✅ NEW FIELD
                 'receivables'  => $request->receivables,
                 'payables'     => $request->payables,
                 'credit_limit' => $request->credit_limit,
                 'opening_date' => $request->opening_date,
                 'remarks'      => $request->remarks,
                 'address'      => $request->address,
-                'phone_no'     => $request->phone_no,
-                'updated_by'   => auth()->id(), // ✅ log who updated
+                'contact_no'   => $request->contact_no,
+                'updated_by'   => auth()->id(),
             ]);
 
-            return redirect()->route('coa.index')->with('success', 'Chart of Account updated successfully.');
+            Log::info('[COA] Account updated', ['id' => $id, 'user' => auth()->id()]);
+
+            return redirect()->route('coa.index')
+                ->with('success', 'Account updated successfully.');
+
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            Log::error('[COA] Update error', ['message' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
     }
 
@@ -159,18 +183,20 @@ class COAController extends Controller
     public function destroy($id)
     {
         try {
-            $chartOfAccount = ChartOfAccounts::findOrFail($id);
-            
-            // Optional: Check if the account has linked transactions before deleting
-            // if ($chartOfAccount->transactions()->exists()) {
-            //     return redirect()->back()->with('error', 'Cannot delete account with existing transactions.');
-            // }
+            $account = ChartOfAccounts::findOrFail($id);
 
-            $chartOfAccount->delete();
+            // Guard: block deletion of core system accounts
+            $systemCodes = ['101001','102001','104001','201001','202001','301001','401001','402001','501001'];
+            if (in_array($account->account_code, $systemCodes)) {
+                return redirect()->back()
+                    ->with('error', 'System account "' . $account->name . '" cannot be deleted.');
+            }
 
-            return redirect()->route('coa.index')->with('success', 'Chart of Account deleted successfully.');
+            $account->delete();
+            return redirect()->route('coa.index')->with('success', 'Account deleted successfully.');
+
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Error deleting account: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
         }
     }
 }

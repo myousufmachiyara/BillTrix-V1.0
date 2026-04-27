@@ -6,6 +6,7 @@ use App\Models\PurchaseInvoice;
 use App\Models\PurchaseInvoiceItem;
 use App\Models\PurchaseInvoiceAttachment;
 use App\Models\Product;
+use App\Models\ProductVariation;
 use App\Models\Voucher;
 use App\Models\MeasurementUnit;
 use App\Models\ChartOfAccounts;
@@ -14,21 +15,35 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use App\Services\myPDF;
 use Carbon\Carbon;
 
 class PurchaseInvoiceController extends Controller
 {
+    // ─────────────────────────────────────────────────────────────
+    // Shared helper: resolve inventory COA by account_code (stable)
+    // ─────────────────────────────────────────────────────────────
+    private function inventoryAccount(): ChartOfAccounts
+    {
+        $account = ChartOfAccounts::where('account_code', '104001')->first();
+        if (!$account) {
+            throw new \Exception('Inventory account (104001 — Stock in Hand) not found. Please check your Chart of Accounts seeder.');
+        }
+        return $account;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // INDEX
+    // ─────────────────────────────────────────────────────────────
     public function index(Request $request)
     {
-        $user = auth()->user();
-
+        $user  = auth()->user();
         $query = PurchaseInvoice::with(['vendor', 'attachments']);
 
         if ($request->has('view_deleted')) {
             $query->onlyTrashed();
         }
 
+        // Non-superadmin sees only their own records
         if (!$user->hasRole('superadmin')) {
             $query->where('created_by', $user->id);
         }
@@ -38,46 +53,52 @@ class PurchaseInvoiceController extends Controller
         return view('purchases.index', compact('invoices'));
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // CREATE FORM
+    // ─────────────────────────────────────────────────────────────
     public function create()
     {
-        $products = Product::get();
-
-        $vendorsQuery = ChartOfAccounts::where('account_type', 'vendor');
-        if (!auth()->user()->hasRole('superadmin')) {
-            $vendorsQuery->where('visibility', 'public');
-        }
-        $vendors = $vendorsQuery->orderBy('name')->get();
-
-        $units = MeasurementUnit::all();
+        $products = Product::with('variations')->orderBy('name')->get();
+        $vendors  = ChartOfAccounts::where('account_type', 'vendor')->orderBy('name')->get();
+        $units    = MeasurementUnit::all();
 
         return view('purchases.create', compact('products', 'vendors', 'units'));
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // STORE  (Purchase Invoice)
+    //
+    // Accounting entry:
+    //   DR  Inventory / Stock in Hand  (asset increases)
+    //   CR  Vendor / Accounts Payable  (liability increases)
+    // ─────────────────────────────────────────────────────────────
     public function store(Request $request)
     {
+        Log::info('[PI] Store started', ['user_id' => auth()->id()]);
+
         $request->validate([
-            'invoice_date'      => 'required|date',
-            'vendor_id'         => 'required|exists:chart_of_accounts,id',
-            'bill_no'           => 'nullable|string|max:100',
-            'ref_no'            => 'nullable|string|max:100',
-            'remarks'           => 'nullable|string',
-            'attachments.*'     => 'nullable|file|mimes:jpg,jpeg,png,pdf,zip|max:2048',
-            'items'             => 'required|array|min:1',
-            'items.*.item_id'   => 'required|exists:products,id',
-            'items.*.quantity'  => 'required|numeric|min:1',
-            'items.*.unit'      => 'required|exists:measurement_units,id',
-            'items.*.price'     => 'required|numeric|min:0',
+            'invoice_date'           => 'required|date',
+            'vendor_id'              => 'required|exists:chart_of_accounts,id',
+            'bill_no'                => 'nullable|string|max:100',
+            'ref_no'                 => 'nullable|string|max:100',
+            'remarks'                => 'nullable|string',
+            'attachments.*'          => 'nullable|file|mimes:jpg,jpeg,png,pdf,zip|max:2048',
+            'items'                  => 'required|array|min:1',
+            'items.*.item_id'        => 'required|exists:products,id',
+            'items.*.variation_id'   => 'nullable|exists:product_variations,id',
+            'items.*.quantity'       => 'required|numeric|min:0.01',
+            'items.*.unit'           => 'required|exists:measurement_units,id',
+            'items.*.price'          => 'required|numeric|min:0',
         ]);
 
         DB::beginTransaction();
 
         try {
-            // 1. Generate Invoice Number
-            $lastInvoice = PurchaseInvoice::withTrashed()->orderBy('id', 'desc')->first();
-            $nextNumber  = $lastInvoice ? intval($lastInvoice->invoice_no) + 1 : 1;
-            $invoiceNo   = str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+            // ── Auto-generate invoice number ──────────────────────
+            $last      = PurchaseInvoice::withTrashed()->orderByDesc('id')->first();
+            $invoiceNo = str_pad($last ? intval($last->invoice_no) + 1 : 1, 6, '0', STR_PAD_LEFT);
 
-            // 2. Create Invoice Header
+            // ── Create invoice header ─────────────────────────────
             $invoice = PurchaseInvoice::create([
                 'invoice_no'   => $invoiceNo,
                 'vendor_id'    => $request->vendor_id,
@@ -88,49 +109,53 @@ class PurchaseInvoiceController extends Controller
                 'created_by'   => auth()->id(),
             ]);
 
-            $totalAmount = 0;
-            $products    = Product::pluck('name', 'id');
-            $position    = 0;
+            Log::info('[PI] Header created', ['invoice_id' => $invoice->id, 'invoice_no' => $invoiceNo]);
 
-            // 3. Create Items
+            // ── Process line items ────────────────────────────────
+            $totalAmount = 0;
+
             foreach ($request->items as $itemData) {
-                $lineTotal    = ($itemData['quantity'] ?? 0) * ($itemData['price'] ?? 0);
+                $qty       = (float) ($itemData['quantity'] ?? 0);
+                $price     = (float) ($itemData['price']    ?? 0);
+                $lineTotal = $qty * $price;
                 $totalAmount += $lineTotal;
 
                 $invoice->items()->create([
-                    'item_id'    => $itemData['item_id'],
-                    'item_name'  => $products[$itemData['item_id']] ?? null,
-                    'quantity'   => $itemData['quantity'] ?? 0,
-                    'unit'       => $itemData['unit'] ?? '',
-                    'price'      => $itemData['price'] ?? 0,
-                    'remarks'    => $itemData['item_remarks'] ?? null,
-                    'sort_order' => $position,
+                    'item_id'      => $itemData['item_id'],
+                    'variation_id' => $itemData['variation_id'] ?? null,
+                    'quantity'     => $qty,
+                    'unit'         => $itemData['unit'],
+                    'price'        => $price,
                 ]);
-                $position++;
+
+                // ── Increment stock only when a variation is linked ──
+                if (!empty($itemData['variation_id'])) {
+                    $variation = ProductVariation::find($itemData['variation_id']);
+                    if ($variation) {
+                        $variation->increment('stock_quantity', $qty);
+                        Log::info('[PI] Stock incremented', ['variation_id' => $variation->id, 'qty' => $qty]);
+                    } else {
+                        Log::warning('[PI] Variation not found', ['variation_id' => $itemData['variation_id']]);
+                    }
+                }
             }
 
-            // 4. Find Inventory Account
-            $inventoryAccount = ChartOfAccounts::where('name', 'Stock in Hand')->first();
-            if (!$inventoryAccount) {
-                throw new \Exception("Default Inventory/Stock account not found. Please check Chart of Accounts.");
-            }
+            // ── FIX: DR Inventory / CR Vendor ────────────────────
+            $inventoryAccount = $this->inventoryAccount();
 
-            // 5. Create Voucher — ALWAYS use updateOrCreate to prevent duplicates
-            Voucher::updateOrCreate(
-                [
-                    'reference'    => (string)$invoice->id,
-                    'voucher_type' => 'journal',
-                ],
-                [
-                    'date'      => $request->invoice_date,
-                    'ac_dr_sid' => $inventoryAccount->id,
-                    'ac_cr_sid' => $request->vendor_id,
-                    'amount'    => $totalAmount,
-                    'remarks'   => "Purchase Invoice #{$invoice->invoice_no}",
-                ]
-            );
+            Voucher::create([
+                'date'         => $request->invoice_date,
+                'voucher_type' => 'journal',
+                'ac_dr_sid'    => $inventoryAccount->id,   // DR: Inventory (asset ↑)
+                'ac_cr_sid'    => $request->vendor_id,     // CR: Vendor (liability ↑)
+                'amount'       => $totalAmount,
+                'reference'    => 'PI-' . $invoice->id,
+                'remarks'      => "Purchase Invoice #{$invoiceNo}",
+            ]);
 
-            // 6. Handle Attachments
+            Log::info('[PI] Voucher created', ['amount' => $totalAmount]);
+
+            // ── Attachments ───────────────────────────────────────
             if ($request->hasFile('attachments')) {
                 foreach ($request->file('attachments') as $file) {
                     $path = $file->store('purchase_invoices', 'public');
@@ -143,64 +168,80 @@ class PurchaseInvoiceController extends Controller
             }
 
             DB::commit();
+            Log::info('[PI] Stored successfully', ['invoice_id' => $invoice->id]);
+
             return redirect()->route('purchase_invoices.index')
                 ->with('success', 'Purchase Invoice created successfully.');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Purchase Invoice Store Error: ' . $e->getMessage());
+            Log::error('[PI] Store error', [
+                'message' => $e->getMessage(),
+                'line'    => $e->getLine(),
+                'file'    => $e->getFile(),
+            ]);
+
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // EDIT FORM
+    // ─────────────────────────────────────────────────────────────
     public function edit($id)
     {
-        $invoice = PurchaseInvoice::with(['items' => function ($q) {
-            $q->orderBy('sort_order', 'asc');
-        }, 'attachments'])->findOrFail($id);
-
-        $user = auth()->user();
-
-        if (!$user->hasRole('superadmin') && $invoice->created_by != $user->id) {
-            abort(403, 'Unauthorized access');
-        }
-
-        $vendorsQuery = ChartOfAccounts::where('account_type', 'vendor');
-        if (!$user->hasRole('superadmin')) {
-            $vendorsQuery->where('visibility', 'public');
-        }
-        $vendors  = $vendorsQuery->orderBy('name')->get();
-        $products = Product::select('id', 'name', 'measurement_unit')->get();
+        $invoice  = PurchaseInvoice::with(['items.product.variations', 'items.variation', 'attachments'])
+                        ->findOrFail($id);
+        $vendors  = ChartOfAccounts::where('account_type', 'vendor')->orderBy('name')->get();
+        $products = Product::with('variations')->select('id', 'name', 'measurement_unit')->get();
         $units    = MeasurementUnit::all();
 
         return view('purchases.edit', compact('invoice', 'vendors', 'products', 'units'));
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // UPDATE
+    //
+    // Steps:
+    //   1. Reverse old stock
+    //   2. Update invoice header
+    //   3. Delete old items, insert new items, apply new stock
+    //   4. updateOrCreate the journal voucher
+    //   5. Handle new attachments
+    // ─────────────────────────────────────────────────────────────
     public function update(Request $request, $id)
     {
         $request->validate([
-            'invoice_date'      => 'required|date',
-            'vendor_id'         => 'required|exists:chart_of_accounts,id',
-            'bill_no'           => 'nullable|string|max:100',
-            'ref_no'            => 'nullable|string|max:100',
-            'remarks'           => 'nullable|string',
-            'attachments.*'     => 'nullable|file|mimes:jpg,jpeg,png,pdf,zip|max:2048',
-            'items'             => 'required|array|min:1',
-            'items.*.item_id'   => 'required|exists:products,id',
-            'items.*.quantity'  => 'required|numeric|min:1',
-            'items.*.unit'      => 'required|exists:measurement_units,id',
-            'items.*.price'     => 'required|numeric|min:0',
-            'convance_charges'  => 'nullable|numeric|min:0',
-            'labour_charges'    => 'nullable|numeric|min:0',
-            'bill_discount'     => 'nullable|numeric|min:0',
+            'invoice_date'           => 'required|date',
+            'vendor_id'              => 'required|exists:chart_of_accounts,id',
+            'bill_no'                => 'nullable|string|max:100',
+            'ref_no'                 => 'nullable|string|max:100',
+            'remarks'                => 'nullable|string',
+            'attachments.*'          => 'nullable|file|mimes:jpg,jpeg,png,pdf,zip|max:2048',
+            'items'                  => 'required|array|min:1',
+            'items.*.item_id'        => 'required|exists:products,id',
+            'items.*.variation_id'   => 'nullable|exists:product_variations,id',
+            'items.*.quantity'       => 'required|numeric|min:0.01',
+            'items.*.unit'           => 'required|exists:measurement_units,id',
+            'items.*.price'          => 'required|numeric|min:0',
         ]);
 
         DB::beginTransaction();
 
         try {
-            $invoice = PurchaseInvoice::findOrFail($id);
+            $invoice = PurchaseInvoice::with('items')->findOrFail($id);
 
-            // 1. Update Invoice Header
+            // ── Step 1: Reverse old stock ─────────────────────────
+            foreach ($invoice->items as $oldItem) {
+                if ($oldItem->variation_id) {
+                    $oldVariation = ProductVariation::find($oldItem->variation_id);
+                    if ($oldVariation) {
+                        $oldVariation->decrement('stock_quantity', $oldItem->quantity);
+                    }
+                }
+            }
+
+            // ── Step 2: Update invoice header ─────────────────────
             $invoice->update([
                 'vendor_id'    => $request->vendor_id,
                 'invoice_date' => $request->invoice_date,
@@ -209,65 +250,53 @@ class PurchaseInvoiceController extends Controller
                 'remarks'      => $request->remarks,
             ]);
 
-            // 2. Refresh Items
+            // ── Step 3: Replace line items & apply new stock ──────
             $invoice->items()->delete();
-
-            $totalItemsAmount = 0;
-            $products         = Product::pluck('name', 'id');
-            $position         = 0;
+            $totalAmount = 0;
 
             foreach ($request->items as $itemData) {
                 if (empty($itemData['item_id'])) continue;
 
-                $lineTotal         = ($itemData['quantity'] ?? 0) * ($itemData['price'] ?? 0);
-                $totalItemsAmount += $lineTotal;
+                $qty         = (float) $itemData['quantity'];
+                $price       = (float) $itemData['price'];
+                $variationId = $itemData['variation_id'] ?? null;
+                $totalAmount += $qty * $price;
 
                 $invoice->items()->create([
                     'item_id'      => $itemData['item_id'],
-                    'variation_id' => $itemData['variation_id'] ?? null,
-                    'item_name'    => $products[$itemData['item_id']] ?? null,
-                    'quantity'     => $itemData['quantity'] ?? 0,
-                    'unit'         => $itemData['unit'] ?? '',
-                    'price'        => $itemData['price'] ?? 0,
-                    'remarks'      => $itemData['item_remarks'] ?? null,
-                    'sort_order'   => $position,
+                    'variation_id' => $variationId,
+                    'quantity'     => $qty,
+                    'unit'         => $itemData['unit'] ?? null,
+                    'price'        => $price,
                 ]);
-                $position++;
+
+                if ($variationId) {
+                    $variation = ProductVariation::find($variationId);
+                    if ($variation) {
+                        $variation->increment('stock_quantity', $qty);
+                    }
+                }
             }
 
-            // 3. Calculate Final Net Amount
-            $convance           = (float)($request->convance_charges ?? 0);
-            $labour             = (float)($request->labour_charges ?? 0);
-            $discount           = (float)($request->bill_discount ?? 0);
-            $finalVoucherAmount = ($totalItemsAmount + $convance + $labour) - $discount;
+            // ── Step 4: Update journal voucher ────────────────────
+            // FIX: DR Inventory / CR Vendor  (same rule as store)
+            $inventoryAccount = $this->inventoryAccount();
 
-            // 4. Find Inventory Account
-            $inventoryAccount = ChartOfAccounts::where('name', 'Stock in Hand')->first();
-            if (!$inventoryAccount) {
-                throw new \Exception("Default Inventory/Stock account not found. Please check Chart of Accounts.");
-            }
+            Voucher::updateOrCreate(
+                [
+                    'reference'    => 'PI-' . $invoice->id,
+                    'voucher_type' => 'journal',
+                ],
+                [
+                    'date'      => $request->invoice_date,
+                    'ac_dr_sid' => $inventoryAccount->id,  // DR: Inventory (asset ↑)
+                    'ac_cr_sid' => $request->vendor_id,    // CR: Vendor (liability ↑)
+                    'amount'    => $totalAmount,
+                    'remarks'   => "Updated Purchase Invoice #{$invoice->invoice_no}",
+                ]
+            );
 
-            // ─────────────────────────────────────────────────────────────────
-            // 5. FIX: Delete ALL existing vouchers for this invoice first,
-            //    then create exactly one fresh voucher.
-            //    This handles edge cases where duplicates already exist AND
-            //    prevents any race condition with updateOrCreate on soft-delete.
-            // ─────────────────────────────────────────────────────────────────
-            Voucher::where('reference', (string)$invoice->id)
-                ->where('voucher_type', 'journal')
-                ->delete(); // Hard-delete old ones (they will be replaced)
-
-            Voucher::create([
-                'reference'    => (string)$invoice->id,
-                'voucher_type' => 'journal',
-                'date'         => $request->invoice_date,
-                'ac_dr_sid'    => $inventoryAccount->id,
-                'ac_cr_sid'    => $request->vendor_id,
-                'amount'       => $finalVoucherAmount,
-                'remarks'      => "Purchase Invoice #{$invoice->invoice_no}",
-            ]);
-
-            // 6. Handle Attachments
+            // ── Step 5: New attachments ───────────────────────────
             if ($request->hasFile('attachments')) {
                 foreach ($request->file('attachments') as $file) {
                     $path = $file->store('purchase_invoices', 'public');
@@ -280,239 +309,197 @@ class PurchaseInvoiceController extends Controller
             }
 
             DB::commit();
-            return redirect()->route('purchase_invoices.index')
-                ->with('success', 'Purchase Invoice updated successfully.');
+            return redirect()->route('purchase_invoices.index')->with('success', 'Purchase Invoice updated successfully.');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Update Error: ' . $e->getMessage());
+            Log::error('[PI] Update error', ['message' => $e->getMessage(), 'line' => $e->getLine()]);
             return back()->withErrors(['error' => 'Failed to update: ' . $e->getMessage()]);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // DESTROY  (soft delete)
+    //
+    // Steps:
+    //   1. Reverse stock
+    //   2. Delete (soft) voucher
+    //   3. Soft-delete items and invoice
+    // ─────────────────────────────────────────────────────────────
     public function destroy($id)
     {
+        $invoice = PurchaseInvoice::with('items')->findOrFail($id);
+
         DB::beginTransaction();
 
         try {
-            $invoice = PurchaseInvoice::findOrFail($id);
+            // Step 1: Reverse stock
+            foreach ($invoice->items as $item) {
+                if ($item->variation_id) {
+                    $variation = ProductVariation::find($item->variation_id);
+                    if ($variation) {
+                        $variation->decrement('stock_quantity', $item->quantity);
+                    }
+                }
+            }
 
-            // ✅ FIX: Cast to string — must match how reference was stored
-            Voucher::where('reference', (string)$invoice->id)
-                ->where('voucher_type', 'journal')
-                ->delete();
+            // Step 2: Remove accounting voucher
+            Voucher::where('reference', 'PI-' . $invoice->id)->delete();
 
+            // Step 3: Soft-delete items and invoice
+            $invoice->items()->delete();
             $invoice->delete();
 
             DB::commit();
             return redirect()->route('purchase_invoices.index')
-                ->with('success', 'Purchase Invoice and Ledger entry deleted.');
+                ->with('success', 'Invoice deleted and stock adjusted.');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to delete invoice $id: " . $e->getMessage());
-            return back()->withErrors(['error' => 'Deletion failed. Ledger was not updated.']);
+            Log::error('[PI] Destroy error', ['message' => $e->getMessage()]);
+            return back()->with('error', 'Failed to delete invoice.');
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // RESTORE  (undo soft delete)
+    // ─────────────────────────────────────────────────────────────
     public function restore($id)
     {
+        $invoice = PurchaseInvoice::onlyTrashed()->with('items')->findOrFail($id);
+
         DB::beginTransaction();
 
         try {
-            $invoice = PurchaseInvoice::onlyTrashed()->findOrFail($id);
             $invoice->restore();
 
-            // ✅ FIX: Cast to string — must match stored reference
-            Voucher::onlyTrashed()
-                ->where('reference', (string)$id)
-                ->restore();
+            foreach ($invoice->items()->onlyTrashed()->get() as $item) {
+                $item->restore();
+                if ($item->variation_id) {
+                    $variation = ProductVariation::find($item->variation_id);
+                    if ($variation) {
+                        $variation->increment('stock_quantity', $item->quantity);
+                    }
+                }
+            }
+
+            Voucher::onlyTrashed()->where('reference', 'PI-' . $invoice->id)->restore();
 
             DB::commit();
-            return redirect()->back()->with('success', 'Invoice and Ledger restored.');
+            return redirect()->back()->with('success', 'Invoice and stock restored successfully.');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to restore invoice $id: " . $e->getMessage());
-            return back()->withErrors(['error' => 'Restore failed.']);
+            Log::error('[PI] Restore error', ['message' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Restore failed: ' . $e->getMessage());
         }
     }
 
-    public function getInvoicesByItem($itemId)
-    {
-        $invoices = PurchaseInvoice::whereHas('items', function ($q) use ($itemId) {
-            $q->where('item_id', $itemId);
-        })
-        ->with('vendor')
-        ->get(['id', 'vendor_id']);
-
-        return response()->json(
-            $invoices->map(function ($inv) {
-                return [
-                    'id'     => $inv->id,
-                    'vendor' => $inv->vendor->name ?? '',
-                ];
-            })
-        );
-    }
-
-    public function getItemDetails($invoiceId, $itemId)
-    {
-        $item = PurchaseInvoiceItem::with(['product', 'measurementUnit'])
-            ->where('purchase_invoice_id', $invoiceId)
-            ->where('item_id', $itemId)
-            ->first();
-
-        if (!$item) {
-            return response()->json(['error' => 'Item not found in this invoice.'], 404);
-        }
-
-        return response()->json([
-            'item_id'   => $item->item_id,
-            'item_name' => $item->product->name ?? '',
-            'quantity'  => $item->quantity,
-            'unit_id'   => $item->unit_id,
-            'unit_name' => $item->unit->name ?? '',
-            'price'     => $item->price,
-        ]);
-    }
-
+    // ─────────────────────────────────────────────────────────────
+    // PRINT  (PDF)
+    // ─────────────────────────────────────────────────────────────
     public function print($id)
     {
-        $invoice = PurchaseInvoice::with(['vendor', 'items' => function ($q) {
-            $q->orderBy('sort_order', 'asc');
-        }])->findOrFail($id);
+        $invoice = PurchaseInvoice::with(['vendor', 'items.product', 'items.variation'])->findOrFail($id);
 
-        $pdf = new \TCPDF();
-
+        $pdf = new \TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
+        $pdf->SetCreator('BillTrix');
+        $pdf->SetAuthor('Lucky Corporation');
+        $pdf->SetTitle('PUR-' . $invoice->invoice_no);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
-        $pdf->SetCreator(PDF_CREATOR);
-        $pdf->SetMargins(10, 10, 10);
-        $pdf->SetAuthor('Bilwani Furnitures');
-        $pdf->SetTitle('PUR-' . $invoice->invoice_no);
-        $pdf->SetSubject('Purchase Invoice');
-        $pdf->SetKeywords('PUR, TCPDF, PDF');
-
+        $pdf->SetMargins(15, 15, 15);
+        $pdf->SetAutoPageBreak(true, 20);
         $pdf->AddPage();
-        $pdf->SetFont('helvetica', '', 10);
 
-        $logoPath = public_path('assets/img/bf_logo.jpg');
+        // Header
+        $logoPath = public_path('assets/img/logo.png');
         if (file_exists($logoPath)) {
-            $pdf->Image($logoPath, 12, 8, 40);
+            $pdf->Image($logoPath, 15, 12, 35);
         }
 
-        $pdf->SetFont('helvetica', 'B', 14);
-        $pdf->SetXY(120, 12);
-        $pdf->Cell(80, 8, 'Purchase Invoice', 0, 1, 'R');
+        $pdf->SetFont('helvetica', 'B', 16);
+        $pdf->SetXY(110, 12);
+        $pdf->Cell(85, 10, 'PURCHASE INVOICE', 0, 1, 'R');
 
-        $pdf->Ln(5);
         $pdf->SetFont('helvetica', '', 10);
+        $pdf->SetXY(110, 20);
+        $pdf->Cell(85, 5, 'Invoice #: ' . $invoice->invoice_no, 0, 1, 'R');
+        $pdf->SetX(110);
+        $pdf->Cell(85, 5, 'Date: ' . Carbon::parse($invoice->invoice_date)->format('d-M-Y'), 0, 1, 'R');
+        $pdf->Ln(5);
 
-        $infoHtml = '
-        <table cellpadding="3" cellspacing="0" width="40%">
-            <tr>
-                <td>
-                    <table border="1" cellpadding="4" cellspacing="0" style="font-size:10px;">
-                        <tr>
-                            <td width="30%"><b>Vendor</b></td>
-                            <td width="70%">' . ($invoice->vendor->name ?? '-') . '</td>
-                        </tr>
-                        <tr>
-                            <td width="30%"><b>Invoice No</b></td>
-                            <td width="70%">' . $invoice->invoice_no . '</td>
-                        </tr>
-                        <tr>
-                            <td width="30%"><b>Date</b></td>
-                            <td width="70%">' . \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') . '</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
+        // Vendor block
+        $vendorHtml = '
+        <table width="40%" border="1" cellpadding="3" style="font-size:10px;">
+            <tr><td width="40%"><b>Vendor:</b></td><td width="60%">' . ($invoice->vendor->name ?? 'N/A') . '</td></tr>
+            <tr><td><b>Bill No:</b></td><td>'  . ($invoice->bill_no ?? '-') . '</td></tr>
+            <tr><td><b>Ref:</b></td><td>'       . ($invoice->ref_no  ?? '-') . '</td></tr>
         </table>';
+        $pdf->writeHTML($vendorHtml, true, false, false, false, '');
+        $pdf->Ln(5);
 
-        $pdf->writeHTML($infoHtml, true, false, false, false, '');
+        // Items table
+        $html = '
+        <table border="1" cellpadding="5" style="font-size:10px;">
+            <thead>
+                <tr style="background-color:#f2f2f2;font-weight:bold;text-align:center;">
+                    <th width="5%">#</th>
+                    <th width="35%">Item Description</th>
+                    <th width="20%">Variation</th>
+                    <th width="10%">Qty</th>
+                    <th width="15%">Price</th>
+                    <th width="15%">Total</th>
+                </tr>
+            </thead>
+            <tbody>';
 
-        $html        = '
-        <table border="1" cellpadding="4" style="text-align:center;font-size:10px;">
-            <tr style="font-weight:bold; background-color:#f5f5f5;">
-                <th width="8%">#</th>
-                <th width="40%">Item</th>
-                <th width="15%">Qty</th>
-                <th width="15%">Price</th>
-                <th width="20%">Total</th>
-            </tr>';
-        $count       = 0;
-        $totalQty    = 0;
         $totalAmount = 0;
+        foreach ($invoice->items as $index => $item) {
+            $variationName = $item->variation->sku ?? $item->variation->variation_name ?? '-';
+            $lineTotal      = $item->quantity * $item->price;
+            $totalAmount   += $lineTotal;
 
-        foreach ($invoice->items as $item) {
-            $count++;
-            $html       .= '
-            <tr>
-                <td>' . $count . '</td>
-                <td>' . $item->product->name . '</td>
-                <td>' . $item->quantity . '</td>
-                <td>' . $item->price . '</td>
-                <td>' . ($item->price * $item->quantity) . '</td>
-            </tr>';
-            $totalQty    += $item->quantity;
-            $totalAmount += ($item->price * $item->quantity);
+            $html .= '
+                <tr>
+                    <td width="5%"  style="text-align:center;">' . ($index + 1) . '</td>
+                    <td width="35%">' . e($item->product->name ?? '-') . '</td>
+                    <td width="20%" style="text-align:center;">' . e($variationName) . '</td>
+                    <td width="10%" style="text-align:center;">' . number_format($item->quantity, 2) . '</td>
+                    <td width="15%" style="text-align:right;">'  . number_format($item->price, 2) . '</td>
+                    <td width="15%" style="text-align:right;">'  . number_format($lineTotal, 2) . '</td>
+                </tr>';
         }
 
         $html .= '
-        <tr>
-            <td colspan="2" align="right"><b>Total</b></td>
-            <td><b>' . number_format($totalQty, 3) . '</b></td>
-            <td colspan="2"><b>' . number_format($totalAmount, 2) . '</b></td>
-        </tr>
+                <tr style="font-weight:bold;background-color:#fafafa;">
+                    <td colspan="5" style="text-align:right;">Total Amount</td>
+                    <td style="text-align:right;">' . number_format($totalAmount, 2) . '</td>
+                </tr>
+            </tbody>
         </table>';
 
         $pdf->writeHTML($html, true, false, false, false, '');
 
-        $pdf->SetFont('helvetica', 'B', 12);
-        $pdf->Ln(20);
-        $lineWidth = 60;
-        $yPosition = $pdf->GetY();
-
-        $pdf->Line(28, $yPosition, 20 + $lineWidth, $yPosition);
-        $pdf->Line(130, $yPosition, 120 + $lineWidth, $yPosition);
-        $pdf->Ln(5);
-
-        $pdf->SetXY(23, $yPosition);
-        $pdf->Cell($lineWidth, 10, 'Approved By', 0, 0, 'C');
-
-        $pdf->SetXY(125, $yPosition);
-        $pdf->Cell($lineWidth, 10, 'Received By', 0, 0, 'C');
-
-        return $pdf->Output('purchase_invoice_' . $invoice->id . '.pdf', 'I');
-    }
-
-    public function getProductInvoices($productId)
-    {
-        try {
-            $invoices = PurchaseInvoice::whereHas('items', function ($q) use ($productId) {
-                $q->where('item_id', $productId);
-            })
-            ->with(['items' => function ($q) use ($productId) {
-                $q->where('item_id', $productId);
-            }])
-            ->get();
-
-            $data = $invoices->map(function ($inv) {
-                $item = $inv->items->first();
-                return [
-                    'id'     => $inv->id,
-                    'number' => $inv->invoice_no, // ✅ FIX: was invoice_number (wrong column name)
-                    'rate'   => $item ? $item->price : 0,
-                ];
-            });
-
-            return response()->json($data);
-
-        } catch (\Exception $e) {
-            Log::error('Invoice fetch failed: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to load invoices'], 500);
+        if ($invoice->remarks) {
+            $pdf->Ln(2);
+            $pdf->SetFont('helvetica', 'I', 9);
+            $pdf->MultiCell(0, 5, 'Remarks: ' . $invoice->remarks, 0, 'L');
         }
+
+        // Signatures
+        $pdf->SetFont('helvetica', '', 10);
+        $ySign = $pdf->GetY() + 25;
+        if ($ySign > 250) { $pdf->AddPage(); $ySign = 30; }
+
+        $pdf->Line(15, $ySign, 75, $ySign);
+        $pdf->SetXY(15, $ySign + 2);
+        $pdf->Cell(60, 5, 'Prepared By', 0, 0, 'C');
+
+        $pdf->Line(135, $ySign, 195, $ySign);
+        $pdf->SetXY(135, $ySign + 2);
+        $pdf->Cell(60, 5, 'Authorized Signature', 0, 0, 'C');
+
+        return $pdf->Output('PI_' . $invoice->invoice_no . '.pdf', 'I');
     }
 }

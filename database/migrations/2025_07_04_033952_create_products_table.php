@@ -20,21 +20,13 @@ return new class extends Migration
             $table->text('description')->nullable();
 
             // Inventory & Pricing
-            $table->decimal('manufacturing_cost', 10, 2)->default(0);
             $table->decimal('opening_stock', 10, 2)->default(0);
             $table->decimal('selling_price', 10, 2)->default(0);
-            $table->decimal('consumption', 10, 2)->default(0);
-
-            // Stock control
-            $table->decimal('reorder_level', 10, 2)->default(0);
-            $table->decimal('max_stock_level', 10, 2)->default(0);
-            $table->decimal('minimum_order_qty', 10, 2)->default(0);
 
             // Classification
             $table->unsignedBigInteger('measurement_unit');
-            $table->string('item_type', 10)->nullable(); // fg, raw, service
             $table->boolean('is_active')->default(true);
-
+            $table->boolean('track_lots')->default(true);
             $table->softDeletes();
             $table->timestamps();
 

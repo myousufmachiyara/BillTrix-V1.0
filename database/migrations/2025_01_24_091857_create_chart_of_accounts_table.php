@@ -16,15 +16,15 @@ return new class extends Migration
             $table->string('account_code', 20)->unique();
             $table->unsignedBigInteger('shoa_id'); // Foreign key for sub_head_of_accounts
             $table->string('name'); // Name of the account
+            $table->string('trn')->nullable(); // Name of the account
             $table->string('account_type')->nullable();
-            $table->enum('visibility', ['public', 'private'])->default('public'); // NEW COLUMN
             $table->decimal('receivables', 15, 2)->default(0);
             $table->decimal('payables', 15, 2)->default(0);
             $table->decimal('credit_limit', 15, 2)->default(0);
             $table->date('opening_date'); // Opening date for the account
             $table->string('remarks')->nullable(); // Optional remarks
             $table->string('address')->nullable(); // Optional address
-            $table->string('phone_no')->nullable(); // Optional phone number
+            $table->string('contact_no')->nullable(); // Optional phone number
             $table->unsignedBigInteger('created_by');
             $table->unsignedBigInteger('updated_by');
             $table->timestamps(); // Includes created_at and updated_at

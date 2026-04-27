@@ -8,167 +8,93 @@ use Illuminate\Support\Facades\Hash;
 use App\Models\HeadOfAccounts;
 use App\Models\SubHeadOfAccounts;
 use App\Models\ChartOfAccounts;
-use App\Models\MeasurementUnit;
-use App\Models\Attribute;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use App\Models\MeasurementUnit;
+use App\Models\ProductCategory;
+use App\Models\Attribute;
+use App\Models\AttributeValue;
+use App\Models\ProductSubcategory;
+use App\Models\Product;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
+    /**
+     * Seed the application's database.
+     */
     public function run(): void
     {
-        $now    = now();
-        $userId = 1;
+        $now = now();
+        $userId = 1; // ID for created_by / updated_by
 
-        // ── Users ────────────────────────────────────────────────────────────
+        // 🔑 Create Super Admin User
         $admin = User::firstOrCreate(
             ['username' => 'admin'],
-            ['name' => 'Admin', 'email' => null, 'password' => Hash::make('12345678')]
+            [
+                'name' => 'Admin',
+                'email' => null,
+                'password' => Hash::make('12345678'),
+            ]
         );
 
-        $manager = User::firstOrCreate(
-            ['username' => 'manager'],
-            ['name' => 'Manager', 'email' => null, 'password' => Hash::make('12345678')]
-        );
+        $superAdmin = Role::firstOrCreate(['name' => 'superadmin']);
+        $admin->assignRole($superAdmin);
 
-        // branch_id will be set after a branch is created; null is fine for seeding
-        $branchUser = User::firstOrCreate(
-            ['username' => 'branch_user'],
-            ['name' => 'Branch User', 'email' => null, 'password' => Hash::make('12345678'), 'branch_id' => null]
-        );
 
-        // ── Permission modules & actions ─────────────────────────────────────
-        $crudPrint = ['index', 'create', 'edit', 'delete', 'print'];
-        $crud      = ['index', 'create', 'edit', 'delete'];
-
+        // 📌 Functional Modules (CRUD-style permissions)
         $modules = [
-            // 1. Accounts
-            'heads_of_accounts'     => $crudPrint,
-            'sub_heads'             => $crudPrint,
-            'coa'                   => $crudPrint,
+            // User Management
+            'user_roles',
+            'users',
 
-            // 2. Users / Roles / Permissions
-            'users'                 => $crudPrint,
-            'roles'                 => $crudPrint,
-            'permissions'           => $crud,           // no print for permissions
+            // Accounts
+            'coa',
+            'shoa',
 
-            // 3. Products
-            'product_categories'    => $crudPrint,
-            'product_subcategories' => $crudPrint,
-            'attributes'            => $crudPrint,
-            'products'              => $crudPrint,
+            // Products
+            'products',
+            'product_categories',
+            'product_subcategories',
+            'attributes',
 
-            // 4. Purchase
-            'purchase_orders'       => $crudPrint,
-            'purchase_invoices'     => $crudPrint,
-            'purchase_returns'      => $crudPrint,
+            // Purchases
+            'purchase_invoices',
+            'purchase_return',
 
-            // 5. Production
-            'production_orders'     => $crudPrint,
-            'production_receiving'  => $crudPrint,
-            'production_returns'    => $crudPrint,
+            // Sales
+            'sale_invoices',
+            'sale_return',
 
-            // 6. Inventory
-            'locations'             => $crudPrint,
-            'stock_in_out'          => $crudPrint,
-            'gatepasses'            => $crudPrint,
-            'stock_transfers'       => $crudPrint,
-
-            // 7. Branches
-            'branches'              => $crudPrint,
-            'branch_users'          => $crud,           // no print for branch users
-
-            // 8. Sales
-            'quotations'            => $crudPrint,
-            'sale_orders'           => $crudPrint,
-            'sale_invoices'         => $crudPrint,
-            'sale_returns'          => $crudPrint,
-
-            // 9. Finance
-            'vouchers'              => $crudPrint,
-            'pdc'                   => $crudPrint,
+            // Vouchers
+            'vouchers',
         ];
 
-        // 10. Report gates — single permission per report page (no CRUD actions)
-        $reportGates = [
-            // Inventory reports
-            'reports.inventory',
-            'reports.item_ledger',
-            'reports.stock_in_hand',
+        $actions = ['index', 'create', 'edit', 'delete', 'print'];
 
-            // Operational reports
-            'reports.purchase',
-            'reports.production',
-            'reports.sales',
-
-            // Accounting reports
-            'reports.ledger',
-            'reports.trial_balance',
-            'reports.pnl',
-            'reports.payables',
-            'reports.receivables',
-
-            // Extended accounting/summary reports (registered in web.php)
-            'reports.cash_flow',
-            'reports.balance_sheet',
-            'reports.day_book',
-        ];
-
-        // Create all module permissions
-        foreach ($modules as $module => $actions) {
+        foreach ($modules as $module) {
             foreach ($actions as $action) {
-                Permission::firstOrCreate(['name' => "{$module}.{$action}"]);
+                Permission::firstOrCreate([
+                    'name' => "$module.$action",
+                ]);
             }
         }
 
-        // Create all report permissions
-        foreach ($reportGates as $gate) {
-            Permission::firstOrCreate(['name' => $gate]);
+        // 📊 Report permissions
+        $reports = ['inventory', 'purchase', 'sales', 'accounts'];
+
+        foreach ($reports as $report) {
+            Permission::firstOrCreate([
+                'name' => "reports.$report",
+            ]);
         }
 
-        // ── Roles ────────────────────────────────────────────────────────────
+        // Assign ALL permissions to both Superadmin and Admin
+        $superAdmin->syncPermissions(Permission::all());
 
-        // superadmin → every permission (including future ones added at runtime)
-        $superAdminRole = Role::firstOrCreate(['name' => 'superadmin']);
-        $superAdminRole->syncPermissions(Permission::all());
-        $admin->assignRole($superAdminRole);
-
-        // manager → everything except:
-        //   • branch creation/editing/deletion (admin-only)
-        //   • permission management (admin-only)
-        //   • role deletion (admin-only)
-        $managerExclude = [
-            'branches.create',   'branches.edit',   'branches.delete',
-            'branch_users.create','branch_users.edit','branch_users.delete',
-            'permissions.create','permissions.edit', 'permissions.delete',
-            'roles.delete',
-        ];
-        $managerRole = Role::firstOrCreate(['name' => 'manager']);
-        $managerRole->syncPermissions(
-            Permission::whereNotIn('name', $managerExclude)->get()
-        );
-        $manager->assignRole($managerRole);
-
-        // branch_user (POS) → minimal sale + quotation permissions only.
-        // Controllers for these routes MUST scope queries by auth()->user()->branch_id.
-        // See: BranchScope middleware and BranchScopedController trait.
-        $branchRole = Role::firstOrCreate(['name' => 'branch_user']);
-        $branchRole->syncPermissions(
-            Permission::whereIn('name', [
-                'sale_invoices.index',  'sale_invoices.create',  'sale_invoices.print',
-                'sale_orders.index',    'sale_orders.create',    'sale_orders.print',
-                'quotations.index',     'quotations.create',     'quotations.print',
-                // Read-only access to own branch inventory for POS stock checks
-                'locations.index',
-                'stock_in_out.index',
-                // Product lookup (no create/edit)
-                'products.index',
-            ])->get()
-        );
-        $branchUser->assignRole($branchRole);
-
-        // ── Heads of Accounts ────────────────────────────────────────────────
+       // ─────────────────────────────────────────
+        // HEADS OF ACCOUNTS  (5 standard heads)
+        // ─────────────────────────────────────────
         HeadOfAccounts::insert([
             ['id' => 1, 'name' => 'Assets',      'created_at' => $now, 'updated_at' => $now],
             ['id' => 2, 'name' => 'Liabilities', 'created_at' => $now, 'updated_at' => $now],
@@ -177,83 +103,100 @@ class DatabaseSeeder extends Seeder
             ['id' => 5, 'name' => 'Expenses',    'created_at' => $now, 'updated_at' => $now],
         ]);
 
-        // ── Sub Heads ─────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────
+        // SUB HEADS
+        // Convention: hoa_id prefix tells which head
+        // ─────────────────────────────────────────
         SubHeadOfAccounts::insert([
-            ['id' =>  1, 'hoa_id' => 1, 'name' => 'Cash',                'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  2, 'hoa_id' => 1, 'name' => 'Bank',                'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  3, 'hoa_id' => 1, 'name' => 'Accounts Receivable', 'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  4, 'hoa_id' => 1, 'name' => 'Inventory',           'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  5, 'hoa_id' => 2, 'name' => 'Accounts Payable',    'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  6, 'hoa_id' => 2, 'name' => 'Loans',               'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  7, 'hoa_id' => 3, 'name' => 'Owner Capital',       'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  8, 'hoa_id' => 4, 'name' => 'Sales',               'created_at' => $now, 'updated_at' => $now],
-            ['id' =>  9, 'hoa_id' => 5, 'name' => 'Purchases',           'created_at' => $now, 'updated_at' => $now],
-            ['id' => 10, 'hoa_id' => 5, 'name' => 'Salaries',            'created_at' => $now, 'updated_at' => $now],
-            ['id' => 11, 'hoa_id' => 5, 'name' => 'Rent',                'created_at' => $now, 'updated_at' => $now],
-            ['id' => 12, 'hoa_id' => 5, 'name' => 'Utilities',           'created_at' => $now, 'updated_at' => $now],
+            // Assets (head 1)
+            ['id' =>  1, 'hoa_id' => 1, 'name' => 'Cash',               'created_at' => $now, 'updated_at' => $now],
+            ['id' =>  2, 'hoa_id' => 1, 'name' => 'Bank',               'created_at' => $now, 'updated_at' => $now],
+            ['id' =>  3, 'hoa_id' => 1, 'name' => 'Accounts Receivable','created_at' => $now, 'updated_at' => $now],
+            ['id' =>  4, 'hoa_id' => 1, 'name' => 'Inventory',          'created_at' => $now, 'updated_at' => $now],
+
+            // Liabilities (head 2)
+            ['id' =>  5, 'hoa_id' => 2, 'name' => 'Accounts Payable',   'created_at' => $now, 'updated_at' => $now],
+            ['id' =>  6, 'hoa_id' => 2, 'name' => 'Loans Payable',      'created_at' => $now, 'updated_at' => $now],
+
+            // Equity (head 3)
+            ['id' =>  7, 'hoa_id' => 3, 'name' => 'Owner Capital',      'created_at' => $now, 'updated_at' => $now],
+
+            // Revenue (head 4)
+            ['id' =>  8, 'hoa_id' => 4, 'name' => 'Sales',              'created_at' => $now, 'updated_at' => $now],
+            ['id' =>  9, 'hoa_id' => 4, 'name' => 'Other Income',       'created_at' => $now, 'updated_at' => $now],
+
+            // Expenses (head 5)
+            // FIX: COGS gets its OWN sub-head, not grouped under 'Purchases'
+            ['id' => 10, 'hoa_id' => 5, 'name' => 'Cost of Goods Sold', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => 11, 'hoa_id' => 5, 'name' => 'Salaries',          'created_at' => $now, 'updated_at' => $now],
+            ['id' => 12, 'hoa_id' => 5, 'name' => 'Rent',              'created_at' => $now, 'updated_at' => $now],
+            ['id' => 13, 'hoa_id' => 5, 'name' => 'Utilities',         'created_at' => $now, 'updated_at' => $now],
+            ['id' => 14, 'hoa_id' => 5, 'name' => 'Other Expenses',    'created_at' => $now, 'updated_at' => $now],
         ]);
 
-        // ── Chart of Accounts ─────────────────────────────────────────────────
+        // ─────────────────────────────────────────
+        // CHART OF ACCOUNTS
+        //
+        // Code format: HHSsssNNN
+        //   HH  = head number (1 digit or 2)
+        //   Sss = sub-head sequential within that head
+        //   NNN = account sequence within sub-head
+        //
+        // Simplified readable format used below: HSSNNN
+        //   1 = Assets, 2 = Liabilities, 3 = Equity,
+        //   4 = Revenue, 5 = Expenses
+        // ─────────────────────────────────────────
         $coaData = [
-            // Assets
-            ['account_code' => '104001', 'shoa_id' =>  4, 'name' => 'Stock in Hand',      'account_type' => 'asset',    'receivables' => 0,     'payables' => 0],
-            ['account_code' => '103001', 'shoa_id' =>  3, 'name' => 'Customer 01',        'account_type' => 'customer', 'receivables' => 12000, 'payables' => 0],
-            ['account_code' => '101001', 'shoa_id' =>  1, 'name' => 'Shop Cash',          'account_type' => 'cash',     'receivables' => 0,     'payables' => 0],
-            ['account_code' => '102001', 'shoa_id' =>  2, 'name' => 'Meezan Yousuf',      'account_type' => 'bank',     'receivables' => 0,     'payables' => 0],
-            // Liabilities
-            ['account_code' => '205001', 'shoa_id' =>  5, 'name' => 'Vendor 01',          'account_type' => 'vendor',   'receivables' => 0,     'payables' => 7500],
-            ['account_code' => '206001', 'shoa_id' =>  6, 'name' => 'Bank Loan',          'account_type' => 'liability','receivables' => 0,     'payables' => 0],
-            // Equity
-            ['account_code' => '307001', 'shoa_id' =>  7, 'name' => 'Owners Equity',      'account_type' => 'equity',   'receivables' => 0,     'payables' => 0],
-            // Revenue
-            ['account_code' => '408001', 'shoa_id' =>  8, 'name' => 'Sales Revenue',      'account_type' => 'revenue',  'receivables' => 0,     'payables' => 0],
-            // Expenses / COGS
-            ['account_code' => '509001', 'shoa_id' =>  9, 'name' => 'Cost of Goods Sold', 'account_type' => 'cogs',     'receivables' => 0,     'payables' => 0],
-            ['account_code' => '510001', 'shoa_id' => 10, 'name' => 'Salaries Expense',   'account_type' => 'expense',  'receivables' => 0,     'payables' => 0],
-            ['account_code' => '511001', 'shoa_id' => 11, 'name' => 'Rent Expense',       'account_type' => 'expense',  'receivables' => 0,     'payables' => 0],
-            ['account_code' => '512001', 'shoa_id' => 12, 'name' => 'Utilities Expense',  'account_type' => 'expense',  'receivables' => 0,     'payables' => 0],
+
+            // ── ASSETS ──────────────────────────────────────────────
+            // FIX: account_type='cash' (not 'asset') so cash book works
+            ['id' =>  1, 'account_code' => '101001', 'shoa_id' =>  1, 'name' => 'Cash in Hand',         'account_type' => 'cash',      'receivables' => 0, 'payables' => 0],
+            ['id' =>  2, 'account_code' => '102001', 'shoa_id' =>  2, 'name' => 'Main Bank Account',    'account_type' => 'bank',      'receivables' => 0, 'payables' => 0],
+            // FIX: account_type='inventory' (was 'asset') so controllers can find it
+            ['id' =>  3, 'account_code' => '104001', 'shoa_id' =>  4, 'name' => 'Stock in Hand',        'account_type' => 'inventory', 'receivables' => 0, 'payables' => 0],
+
+            // ── LIABILITIES ─────────────────────────────────────────
+            // (Vendors are created dynamically, but a control account is useful)
+            ['id' =>  4, 'account_code' => '201001', 'shoa_id' =>  5, 'name' => 'Accounts Payable',     'account_type' => 'liability', 'receivables' => 0, 'payables' => 0],
+            ['id' =>  5, 'account_code' => '202001', 'shoa_id' =>  6, 'name' => 'Loan Payable',         'account_type' => 'liability', 'receivables' => 0, 'payables' => 0],
+
+            // ── EQUITY ──────────────────────────────────────────────
+            ['id' =>  6, 'account_code' => '301001', 'shoa_id' =>  7, 'name' => 'Owner Capital',        'account_type' => 'equity',    'receivables' => 0, 'payables' => 0],
+            ['id' =>  7, 'account_code' => '302001', 'shoa_id' =>  7, 'name' => 'Owner Drawings',       'account_type' => 'equity',    'receivables' => 0, 'payables' => 0],
+            ['id' =>  8, 'account_code' => '303001', 'shoa_id' =>  7, 'name' => 'Retained Earnings',    'account_type' => 'equity',    'receivables' => 0, 'payables' => 0],
+
+            // ── REVENUE ─────────────────────────────────────────────
+            // FIX: code 401001, not 408001
+            ['id' =>  9, 'account_code' => '401001', 'shoa_id' =>  8, 'name' => 'Sales Revenue',        'account_type' => 'revenue',   'receivables' => 0, 'payables' => 0],
+            ['id' => 10, 'account_code' => '402001', 'shoa_id' =>  9, 'name' => 'Other Income',         'account_type' => 'revenue',   'receivables' => 0, 'payables' => 0],
+
+            // ── EXPENSES ────────────────────────────────────────────
+            // FIX: COGS under its own sub-head (shoa_id=10), code 501001
+            ['id' => 11, 'account_code' => '501001', 'shoa_id' => 10, 'name' => 'Cost of Goods Sold',   'account_type' => 'cogs',      'receivables' => 0, 'payables' => 0],
+            ['id' => 12, 'account_code' => '502001', 'shoa_id' => 11, 'name' => 'Salaries Expense',     'account_type' => 'expenses',  'receivables' => 0, 'payables' => 0],
+            ['id' => 13, 'account_code' => '503001', 'shoa_id' => 12, 'name' => 'Rent Expense',         'account_type' => 'expenses',  'receivables' => 0, 'payables' => 0],
+            ['id' => 14, 'account_code' => '504001', 'shoa_id' => 13, 'name' => 'Utilities Expense',    'account_type' => 'expenses',  'receivables' => 0, 'payables' => 0],
+            ['id' => 15, 'account_code' => '505001', 'shoa_id' => 14, 'name' => 'Miscellaneous Expense','account_type' => 'expenses',  'receivables' => 0, 'payables' => 0],
         ];
 
         foreach ($coaData as $data) {
-            ChartOfAccounts::firstOrCreate(
-                ['account_code' => $data['account_code']],
-                array_merge($data, [
-                    'opening_date' => '2026-01-19',
-                    'credit_limit' => 0,
-                    'remarks'      => null,
-                    'address'      => null,
-                    'phone_no'     => null,
-                    'created_by'   => $userId,
-                    'updated_by'   => $userId,
-                ])
-            );
+            ChartOfAccounts::create(array_merge($data, [
+                'credit_limit' => 0,
+                'opening_date' => now(),
+                'created_by'   => $userId,
+                'updated_by'   => $userId,
+                'created_at'   => $now,
+                'updated_at'   => $now,
+            ]));
         }
 
-        // ── Measurement Units ─────────────────────────────────────────────────
-        MeasurementUnit::upsert([
-            ['id' =>  1, 'name' => 'Kilogram',   'shortcode' => 'kg'],
-            ['id' =>  2, 'name' => 'Milligram',  'shortcode' => 'mg'],
-            ['id' =>  3, 'name' => 'Gram',       'shortcode' => 'g'],
-            ['id' =>  4, 'name' => 'Millimeter', 'shortcode' => 'mm'],
-            ['id' =>  5, 'name' => 'Meters',     'shortcode' => 'm'],
-            ['id' =>  6, 'name' => 'Yards',      'shortcode' => 'yrds'],
-            ['id' =>  7, 'name' => 'Sq.Ft',      'shortcode' => 'sqft'],
-            ['id' =>  8, 'name' => 'Tons',        'shortcode' => 'tns'],
-            ['id' =>  9, 'name' => 'Pieces',      'shortcode' => 'pcs'],
-            ['id' => 10, 'name' => 'Carton',      'shortcode' => 'ct'],
-            ['id' => 11, 'name' => 'Set',         'shortcode' => 'set'],
-            ['id' => 12, 'name' => 'Pair',        'shortcode' => 'pair'],
-        ], ['id'], ['name', 'shortcode']);
-
-        // ── Default attribute ─────────────────────────────────────────────────
-        Attribute::firstOrCreate(
-            ['slug' => Str::slug('Size')],
-            ['name' => 'Size']
-        );
-
-        Attribute::firstOrCreate(
-            ['slug' => Str::slug('Color')],
-            ['name' => 'Color']
-        );
+        // 📏 Measurement Units
+        MeasurementUnit::insert([
+            ['id' => 1, 'name' => 'Kilogram', 'shortcode' => 'kg'],
+            ['id' => 2, 'name' => 'Meter',    'shortcode' => 'm'],
+            ['id' => 3, 'name' => 'Pieces',   'shortcode' => 'pcs'],
+            ['id' => 4, 'name' => 'Bag',      'shortcode' => 'bag'],
+            ['id' => 5, 'name' => 'Bundle',   'shortcode' => 'bundle'],
+        ]);
     }
 }

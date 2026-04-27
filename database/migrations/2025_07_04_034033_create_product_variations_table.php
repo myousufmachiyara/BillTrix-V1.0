@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('product_id');
             $table->string('sku')->unique();
-            $table->decimal('manufacturing_cost', 10, 2)->default(0);
             $table->decimal('selling_price', 10, 2)->default(0);
             $table->decimal('stock_quantity', 10, 2)->default(0);
             $table->softDeletes();

@@ -15,14 +15,13 @@ class ChartOfAccounts extends Model
         'name',
         'account_code',
         'account_type',
-        'visibility', // NEW FIELD
         'receivables',
         'payables',
         'credit_limit',
         'opening_date',
         'remarks',
         'address',
-        'phone_no',
+        'contact_no',
         'created_by',
         'updated_by',
     ];

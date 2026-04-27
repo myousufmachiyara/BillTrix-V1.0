@@ -123,4 +123,11 @@
     </div>
   </div>
 </div>
+<script>
+  $(document).ready(function () {
+    $('#datatable-categories').DataTable({
+      "pageLength": 100
+    });
+  });
+</script>
 @endsection
