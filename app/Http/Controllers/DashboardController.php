@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Services\ReportService;
+use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(ReportService $reports): View
     {
-        return view('home');
-    } 
+        $user = auth()->user();
+
+        return view('dashboard', [
+            'stats' => $user->can('dashboard.view') ? $reports->dashboard() : null,
+        ]);
+    }
 }

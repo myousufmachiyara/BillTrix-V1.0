@@ -1,61 +1,101 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# BillTrix — Generic Edition
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Inventory, billing and double-entry accounting for **retailers, wholesalers and traders** in Pakistan.
+One configurable product: the business category only picks starting settings; every feature can be switched on or off per business.
 
-## About Laravel
+- Laravel 13 (PHP 8.3+), MySQL / MariaDB (SQLite and PostgreSQL also work)
+- UI follows the existing BillTrix admin theme (Porto, Bootstrap 5, jQuery, Select2) — no build step needed
+- Multi-business (SaaS-ready), multi-branch, multi-warehouse, role-based permissions (spatie/laravel-permission with per-business roles)
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Install
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+```bash
+composer install
+cp .env.example .env          # set DB_* for MySQL
+php artisan key:generate
+php artisan migrate --seed    # creates permissions
+php artisan storage:link      # logos & product images
+```
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Create a business either from the browser at `/register` (set `BILLTRIX_ALLOW_REGISTRATION=false` to disable), or:
 
-## Learning Laravel
+```bash
+php artisan billtrix:create-business
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Demo data (a wholesaler with products, parties and a month of transactions):
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+```bash
+php artisan db:seed --class=DemoSeeder     # login: demo@billtrix.pk / password
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Run tests: `php artisan test` (SQLite in memory).
 
-## Laravel Sponsors
+## What is in this release (Phase 1)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+| Area | Included |
+|---|---|
+| Setup | Business profile, NTN/STRN, logo; feature switches; branches & warehouses; users; roles & permissions; units; categories; price levels; tax rates |
+| Products | SKU, barcode, images, categories, base unit + packs (carton/box/piece with own barcode & price), price levels, reorder level, non-stock items, opening stock |
+| Stock | Moving weighted-average cost, per-warehouse balances, immutable stock ledger, opening stock, adjustments (damaged/expired/lost/found), physical count, warehouse transfers, negative-stock guard |
+| Sales | Fast invoice screen with barcode scanner (`qty*barcode`), product search, cash/credit, walk-in customers, line & bill discounts, tax (inclusive or exclusive), freight, round-off, partial payment, credit-limit check, below-cost check, A4 and 58/80 mm thermal print, previous balance on print |
+| Purchases | Supplier bills with landed cost (discount + freight spread over items), partial payments |
+| Returns | Sale & purchase returns against the original invoice (quantity guard, original cost), auto-settled against the invoice |
+| Accounting | Chart of accounts tree (PK SME template), customers/suppliers as sub-ledgers of AR/AP, receipts & payments with invoice allocation, expense payments, journal vouchers, cash ⇄ bank transfers, opening balances |
+| Reports | Dashboard, sales/purchase registers, product-wise sales & margin, P&L, balance sheet, trial balance, account ledger, cash & bank book, party statement, receivables/payables aging, day book, stock valuation, stock movement, low stock |
 
-### Premium Partners
+## Phase 2
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+| Area | Included |
+|---|---|
+| POS | Full-screen counter: scanner (`qty*barcode`), product tiles by category, walk-in or account customer, line & bill discount (amount or %), split tender across cash/bank/card accounts with change, hold & recall bills, reprint / return recent bills, thermal receipt, keyboard-driven (F2 scan, F6 bills, F7 hold, F8 recall, F9 pay) |
+| Cash closing | Register shifts with opening float; expected cash from the shift's bills and refunds; denomination count (Rs 5000 → 1); over/short posted to *Cash Over / Short*; X/Z report on thermal paper; managers can see and close any register |
+| Quotations | Valid-until date, terms, print; convert to a sales order or invoice directly |
+| Sales orders | Deliver in parts through challans or invoice pending lines directly; ordered / delivered / pending per line; open → partly fulfilled → completed; cancel / re-open |
+| Delivery challans | Stock leaves at average cost into *Goods Delivered Not Invoiced*; one invoice can bill several challans of a customer; challan prints without prices |
+| Purchase orders | Receive and bill in parts through purchase invoices; pending quantity guard |
+| Customer prices | Special rate per product per customer; lookup priority: customer price → price level → default |
 
-## Contributing
+Every Phase 2 feature is a switch in **Settings → Business & Features**. Wholesale and trading presets switch on orders and challans; retail switches on register shifts.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Upgrading an existing Phase 1 database: `php artisan migrate` adds the new tables, system accounts (*Goods Delivered Not Invoiced*, *Cash Over / Short*) and permissions to every business. `php artisan billtrix:upgrade` repeats that safely at any time.
 
-## Code of Conduct
+### Planned next
+- **Phase 3:** REST API for mobile (Sanctum), FBR POS integration, withholding tax, batch & expiry tracking (optional), Excel import/export, Urdu UI
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## How it works
 
-## Security Vulnerabilities
+**Everything posts through two services, inside one DB transaction.**
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+- `StockService` — the only writer of `stock_movements` / `stock_balances`. Locks the product and balance rows, keeps the moving average cost, refuses negative stock unless allowed.
+- `LedgerService` — the only writer of `journal_entries` / `journal_lines`. Rejects unbalanced entries, postings to group accounts, and AR/AP lines without a party.
 
-## License
+Documents (`InvoiceService`, `VoucherService`, `StockDocumentService`) call those two. Editing a document reverses its stock and ledger effect and re-posts it, so stock, ledgers and reports never drift apart.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+**Posting rules** use stable `system_key`s on accounts (`sales`, `inventory`, `receivable`…) so users can rename or renumber accounts freely.
+
+| Document | Debit | Credit |
+|---|---|---|
+| Sale | Customer (AR), Sales Discount, COGS | Sales, Output Tax, Freight Income, Inventory (or GDNI for challan lines) |
+| Delivery challan | Goods Delivered Not Invoiced | Inventory |
+| Register close | Cash or Cash Over / Short | the other side |
+| Purchase | Inventory (landed), Input Tax | Supplier (AP) |
+| Sale return | Sales Returns, Output Tax, Inventory | Customer (AR), COGS |
+| Purchase return | Supplier (AP) | Inventory, Input Tax |
+| Receipt / payment | Cash/Bank or AR/AP/expense | the other side |
+| Stock gain / loss | Inventory or Inventory Adjustments | the other side |
+
+**Tenancy:** every business-owned model uses `BelongsToBusiness` (global scope + auto-fill). The `tenant` middleware binds the signed-in user's business; spatie roles use `business_id` as the team key.
+
+**Configuration:** `config/billtrix.php` holds feature defaults, category presets, the default chart of accounts, units, permissions and default roles (Owner, Manager, Accountant, Cashier, Storekeeper).
+
+## Code map
+
+```
+app/Services/           InvoiceService, OrderService, DeliveryService, CashSessionService, VoucherService, StockDocumentService, StockService, LedgerService, ReportService, BusinessProvisioner
+app/Http/Controllers/   Trade (sales/purchases/returns), Accounting, Inventory, Reports, Settings
+app/Models/             Business, Account, Party, JournalEntry/Line, Product, ProductUnit, StockMovement, Invoice ...
+resources/views/        Blade views on the BillTrix theme; components in views/components
+public/assets/js/       billtrix.js (common), invoice.js (invoice & order editor), pos.js (POS)
+tests/Feature/          PostingTest, Phase2Test (orders, challans, POS, registers), PagesTest (every screen + HTTP flows)
+```
