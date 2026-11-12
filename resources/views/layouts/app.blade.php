@@ -29,6 +29,10 @@
     <style>
         /* From the BillTrix base theme layout */
         .cust-pad { padding-top: 0; }
+        html:not(.sidebar-left-collapsed) #sidebar-left .nano,
+        html:not(.sidebar-left-collapsed) #sidebar-left .nano-content { overflow-x: hidden; }
+        #sidebar-left ul.nav-main { margin-right: 0; }
+        @media (min-width: 768px) { html:not(.sidebar-left-collapsed) #sidebar-left { overflow: hidden; } }
         @media (min-width: 768px) {
             .cust-pad { padding: 60px 10px 0px 20px; }
             .sidebar-logo { width: 60%; height: auto; padding-top: 5px; }
@@ -74,6 +78,15 @@
                         </li>
                     </ul>
                 </div>
+            </div>
+            <div class="bt-quick" style="float:right; display:flex; align-items:center; gap:8px; height:50px; margin-right:16px;">
+                <span class="d-none d-lg-inline text-muted small me-2"><i class="fas fa-store me-1"></i>{{ $business?->name }} · {{ auth()->user()->branch?->name }}</span>
+                @if ($business?->feature('pos') && auth()->user()->can('pos.use'))
+                    <a href="{{ route('pos') }}" class="btn btn-success btn-sm" title="{{ __('Point of sale') }}"><i class="fas fa-cash-register"></i> {{ __('POS') }}</a>
+                @endif
+                @can('sales.create')
+                    <a href="{{ route('invoices.create', 'sales') }}" class="btn btn-primary btn-sm" title="{{ __('New sale (Alt+N)') }}" accesskey="n"><i class="fas fa-plus"></i> {{ __('New Sale') }}</a>
+                @endcan
             </div>
         </div>
 
