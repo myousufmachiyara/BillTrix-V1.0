@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="{{ asset('assets/css/theme.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/skins/default.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/billtrix.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/billtrix.css') }}?v={{ @filemtime(public_path('assets/css/billtrix.css')) }}">
     @if (app()->getLocale() === 'ur')
         <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">
     @endif
@@ -140,7 +140,7 @@
     window.BT_I18N = @js(app()->getLocale() === 'en' ? null : collect(['Search…', 'Search product…', 'In stock (base units)', 'in stock', 'pending', 'of', 'Batch', 'Auto — earliest expiry first', 'exp',
         'Batch no.', 'Expiry', 'Remove', 'Below cost', 'This bill alone exceeds the credit limit of', 'Add at least one item.', 'Balance', 'Account…', 'Difference', 'Balanced',
         'Choose challans of one customer'])->mapWithKeys(fn ($k) => [$k => __($k)]));</script>
-<script src="{{ asset('assets/js/billtrix.js') }}"></script>
+<script src="{{ asset('assets/js/billtrix.js') }}?v={{ @filemtime(public_path('assets/js/billtrix.js')) }}"></script>
 @if (session('print'))
     <script>window.open(@json(session('print')), '_blank');</script>
 @endif

@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="{{ asset('assets/vendor/font-awesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/theme.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/skins/default.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/billtrix.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/billtrix.css') }}?v={{ @filemtime(public_path('assets/css/billtrix.css')) }}">
 </head>
 <body>
 <section class="body-sign">

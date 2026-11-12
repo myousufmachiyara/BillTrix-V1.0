@@ -5,7 +5,7 @@
  *  - Other pages: network first, cached copy or the offline page when there's no connection.
  *  - Data requests (JSON) and every POST always go to the network; the page decides what to do offline.
  */
-const VERSION = 'bt-v2';
+const VERSION = 'bt-v3';
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
 const scope = self.registration.scope;
@@ -44,10 +44,13 @@ self.addEventListener('fetch', (event) => {
     if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
     if (url.pathname.includes('/assets/')) {
+        // Exact URL (files carry ?v=<modified time>) from cache, refreshed in the background;
+        // a new version goes to the network; offline, any cached copy of the file will do.
         event.respondWith(caches.open(STATIC).then(async (cache) => {
-            const hit = await cache.match(req, { ignoreSearch: true });
-            const fresh = fetch(req).then((res) => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => hit);
-            return hit || fresh;
+            const hit = await cache.match(req);
+            const fresh = fetch(req).then((res) => { if (res.ok) cache.put(req, res.clone()); return res; });
+            if (hit) { fresh.catch(() => {}); return hit; }
+            return fresh.catch(async () => (await cache.match(req, { ignoreSearch: true })) || Response.error());
         }));
         return;
     }

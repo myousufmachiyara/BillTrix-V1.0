@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="{{ asset('assets/vendor/font-awesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/vendor/select2/css/select2.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/vendor/select2-bootstrap-theme/select2-bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/pos.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/pos.css') }}?v={{ @filemtime(public_path('assets/css/pos.css')) }}">
     @if (app()->getLocale() === 'ur')<link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">@endif
 </head>
 <body class="lang-{{ app()->getLocale() }}">
@@ -193,7 +193,7 @@
 <script src="{{ asset('assets/vendor/jquery/jquery.min.js') }}"></script>
 <script src="{{ asset('assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ asset('assets/vendor/select2/js/select2.min.js') }}"></script>
-<script src="{{ asset('assets/js/billtrix.js') }}"></script>
-<script src="{{ asset('assets/js/pos.js') }}"></script>
+<script src="{{ asset('assets/js/billtrix.js') }}?v={{ @filemtime(public_path('assets/js/billtrix.js')) }}"></script>
+<script src="{{ asset('assets/js/pos.js') }}?v={{ @filemtime(public_path('assets/js/pos.js')) }}"></script>
 </body>
 </html>

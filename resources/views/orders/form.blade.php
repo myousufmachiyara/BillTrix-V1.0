@@ -99,7 +99,7 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('assets/js/invoice.js') }}"></script>
+<script src="{{ asset('assets/js/invoice.js') }}?v={{ @filemtime(public_path('assets/js/invoice.js')) }}"></script>
 <script>
     BT.invoiceEditor({
         form: '#invoice-form',
