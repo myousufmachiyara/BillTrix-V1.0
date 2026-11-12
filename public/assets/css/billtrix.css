@@ -8,7 +8,7 @@
 .bt-pagebar { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; margin: 0 0 1.25rem; }
 .bt-pagebar h2 { font-size: 1.35rem; font-weight: 600; margin: 0; color: #222; }
 @media (min-width: 768px) {
-    html.fixed .content-body { padding: 24px 28px; }
+    html.fixed .content-body { padding: 0px !important; }
 }
 @media (max-width: 767px) { .content-body { padding: 16px 12px; } }
 .card-title { font-size: 1.05rem; }
