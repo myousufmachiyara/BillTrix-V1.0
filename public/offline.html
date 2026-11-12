@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline · BillTrix</title>
+    <style>
+        body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #eef1f5; color: #222; }
+        .box { background: #fff; padding: 2rem; border-radius: 12px; max-width: 420px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+        a, button { display: inline-block; margin: .3rem; padding: .6rem 1.2rem; border-radius: 8px; border: 0; font-size: 1rem; text-decoration: none; cursor: pointer; }
+        .primary { background: #198754; color: #fff; } .ghost { background: #e9ecef; color: #222; }
+    </style>
+</head>
+<body>
+<div class="box">
+    <img src="assets/icons/icon-192.png" width="72" height="72" alt="">
+    <h2>You're offline</h2>
+    <p>This page needs the internet. The POS keeps working offline — bills are saved on this device and sent when the connection returns.</p>
+    <a class="primary" href="pos">Open POS</a>
+    <button class="ghost" onclick="location.reload()">Try again</button>
+</div>
+</body>
+</html>

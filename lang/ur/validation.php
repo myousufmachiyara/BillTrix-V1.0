@@ -1,0 +1,51 @@
+<?php
+
+// Urdu messages for the validation rules BillTrix uses. Anything missing falls back to English.
+return [
+    'accepted' => ':attribute کو قبول کرنا ضروری ہے۔',
+    'after_or_equal' => ':attribute، :date یا اس کے بعد کی تاریخ ہونی چاہیے۔',
+    'array' => ':attribute ایک فہرست ہونی چاہیے۔',
+    'before_or_equal' => ':attribute، :date یا اس سے پہلے کی تاریخ ہونی چاہیے۔',
+    'boolean' => ':attribute ہاں یا نہیں ہونا چاہیے۔',
+    'confirmed' => ':attribute کی تصدیق مطابقت نہیں رکھتی۔',
+    'current_password' => 'پاس ورڈ غلط ہے۔',
+    'date' => ':attribute درست تاریخ نہیں ہے۔',
+    'distinct' => ':attribute میں تکرار ہے۔',
+    'email' => ':attribute درست ای میل ہونا چاہیے۔',
+    'exists' => 'منتخب :attribute درست نہیں۔',
+    'file' => ':attribute ایک فائل ہونی چاہیے۔',
+    'gt' => ['numeric' => ':attribute، :value سے زیادہ ہونا چاہیے۔'],
+    'gte' => ['numeric' => ':attribute، :value یا اس سے زیادہ ہونا چاہیے۔'],
+    'image' => ':attribute ایک تصویر ہونی چاہیے۔',
+    'in' => 'منتخب :attribute درست نہیں۔',
+    'integer' => ':attribute پورا عدد ہونا چاہیے۔',
+    'max' => [
+        'numeric' => ':attribute، :max سے زیادہ نہیں ہو سکتا۔',
+        'file' => ':attribute، :max کلوبائٹ سے بڑا نہیں ہو سکتا۔',
+        'string' => ':attribute، :max حروف سے زیادہ نہیں ہو سکتا۔',
+        'array' => ':attribute میں :max سے زیادہ اشیاء نہیں ہو سکتیں۔',
+    ],
+    'mimes' => ':attribute اس قسم کی فائل ہونی چاہیے: :values۔',
+    'min' => [
+        'numeric' => ':attribute کم از کم :min ہونا چاہیے۔',
+        'file' => ':attribute کم از کم :min کلوبائٹ ہونا چاہیے۔',
+        'string' => ':attribute کم از کم :min حروف کا ہونا چاہیے۔',
+        'array' => ':attribute میں کم از کم :min اشیاء ہونی چاہئیں۔',
+    ],
+    'numeric' => ':attribute عدد ہونا چاہیے۔',
+    'required' => ':attribute لازمی ہے۔',
+    'required_if' => ':attribute لازمی ہے جب :other :value ہو۔',
+    'required_with' => ':attribute لازمی ہے جب :values موجود ہو۔',
+    'size' => ['string' => ':attribute، :size حروف کا ہونا چاہیے۔'],
+    'string' => ':attribute متن ہونا چاہیے۔',
+    'unique' => 'یہ :attribute پہلے سے موجود ہے۔',
+    'uuid' => ':attribute درست UUID ہونا چاہیے۔',
+
+    'attributes' => [
+        'name' => 'نام', 'email' => 'ای میل', 'password' => 'پاس ورڈ', 'phone' => 'فون', 'date' => 'تاریخ', 'amount' => 'رقم',
+        'party_id' => 'گاہک / سپلائر', 'account_id' => 'کھاتہ', 'warehouse_id' => 'گودام', 'product_id' => 'پروڈکٹ', 'unit_id' => 'یونٹ',
+        'items' => 'آئٹمز', 'quantity' => 'مقدار', 'price' => 'قیمت', 'sale_price' => 'قیمتِ فروخت', 'purchase_price' => 'قیمتِ خرید',
+        'sku' => 'SKU', 'barcode' => 'بارکوڈ', 'code' => 'کوڈ', 'credit_limit' => 'ادھار کی حد', 'discount' => 'رعایت',
+        'opening_float' => 'ابتدائی فلوٹ', 'counted_cash' => 'گنی گئی نقدی', 'file' => 'فائل', 'sold_at' => 'فروخت کی تاریخ',
+    ],
+];

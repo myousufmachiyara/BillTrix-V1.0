@@ -1,0 +1,20 @@
+{
+    "name": "BillTrix",
+    "short_name": "BillTrix",
+    "description": "Billing, POS, inventory and accounts for retailers, wholesalers and traders.",
+    "start_url": "./?source=pwa",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#ffffff",
+    "theme_color": "#1d2127",
+    "icons": [
+        { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+        { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    ],
+    "shortcuts": [
+        { "name": "POS", "url": "./pos", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+        { "name": "New sale", "url": "./sales/create", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+        { "name": "Customers", "url": "./parties?type=customer", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+    ]
+}
