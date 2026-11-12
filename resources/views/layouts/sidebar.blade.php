@@ -8,7 +8,12 @@
 @endphp
 <aside id="sidebar-left" class="sidebar-left">
     <div class="sidebar-header">
-        <div class="sidebar-title">{{ __('Menu') }}</div>
+        <div class="sidebar-title">
+            <a href="{{ route('dashboard') }}" class="logo"><img src="{{ asset('assets/img/billtrix-logo-1.png') }}" class="sidebar-logo" alt="BillTrix"></a>
+            <div class="d-md-none toggle-sidebar-left" data-toggle-class="sidebar-left-opened" data-target="html" data-fire-event="sidebar-left-opened">
+                <i class="fas fa-times" aria-label="{{ __('Toggle sidebar') }}"></i>
+            </div>
+        </div>
         <div class="sidebar-toggle d-none d-md-block" data-toggle-class="sidebar-left-collapsed" data-target="html" data-fire-event="sidebar-left-toggle">
             <i class="fas fa-bars" aria-label="{{ __('Toggle sidebar') }}"></i>
         </div>

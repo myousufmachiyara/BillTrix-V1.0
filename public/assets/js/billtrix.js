@@ -65,6 +65,11 @@
             window.location = $(this).data('href');
         });
 
+        // Remember whether the sidebar is collapsed.
+        $(document).on('click', '.sidebar-toggle', () => setTimeout(() => {
+            try { localStorage.setItem('bt-sidebar-collapsed', document.documentElement.classList.contains('sidebar-left-collapsed') ? '1' : '0'); } catch (e) { /* storage blocked */ }
+        }, 50));
+
         // Installable app (PWA): service worker, install button, forget cached pages on logout.
         if ('serviceWorker' in navigator && window.BT_SW) {
             navigator.serviceWorker.register(window.BT_SW).catch(() => {});

@@ -5,7 +5,7 @@
  *  - Other pages: network first, cached copy or the offline page when there's no connection.
  *  - Data requests (JSON) and every POST always go to the network; the page decides what to do offline.
  */
-const VERSION = 'bt-v1';
+const VERSION = 'bt-v2';
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
 const scope = self.registration.scope;

@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="{{ app()->getLocale() }}" class="fixed">
+<html lang="{{ app()->getLocale() }}" class="fixed js csstransforms csstransforms3d">
 <head>
     <meta charset="UTF-8">
+    <script>try { if (localStorage.getItem('bt-sidebar-collapsed') === '1' && innerWidth >= 768) document.documentElement.classList.add('sidebar-left-collapsed'); } catch (e) {}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ __(html_entity_decode(trim($__env->yieldContent('title', 'Dashboard')), ENT_QUOTES)) }} · {{ $business?->name ?? 'BillTrix' }}</title>
@@ -29,29 +30,14 @@
 </head>
 <body class="lang-{{ app()->getLocale() }}">
 <section class="body">
-    <header class="header">
-        <div class="logo-container">
+    {{-- Top bar: same structure as the BillTrix base theme (logo lives in the sidebar) --}}
+    <header class="page-header bt-topbar">
+        <div class="logo-container d-md-none">
             <a href="{{ route('dashboard') }}" class="logo">
-                <img src="{{ asset('assets/img/billtrix-logo-black.png') }}" height="35" alt="BillTrix">
+                <img src="{{ asset('assets/img/billtrix-logo-black.png') }}" height="30" alt="BillTrix">
             </a>
-            <div class="d-md-none toggle-sidebar-left" data-toggle-class="sidebar-left-opened" data-target="html" data-fire-event="sidebar-left-opened">
-                <i class="fas fa-bars" aria-label="{{ __('Toggle sidebar') }}"></i>
-            </div>
         </div>
-
-        <div class="header-right">
-            <span class="d-none d-lg-inline text-muted me-3 small">
-                <i class="fas fa-store me-1"></i>{{ $business?->name }} · {{ auth()->user()->branch?->name }}
-            </span>
-            @if ($business?->feature('pos') && auth()->user()->can('pos.use'))
-                <a href="{{ route('pos') }}" class="btn btn-success btn-sm me-2 d-none d-sm-inline-block" title="{{ __('Point of sale') }}"><i class="fas fa-cash-register"></i> {{ __('POS') }}</a>
-            @endif
-            @can('sales.create')
-                <a href="{{ route('invoices.create', 'sales') }}" class="btn btn-primary btn-sm me-3 d-none d-sm-inline-block" title="{{ __('New sale (Alt+N)') }}" accesskey="n">
-                    <i class="fas fa-plus"></i> {{ __('New Sale') }}
-                </a>
-            @endcan
-            <span class="separator"></span>
+        <div class="bt-topbar-right">
             <div id="userbox" class="userbox">
                 <a href="#" data-bs-toggle="dropdown">
                     <div class="profile-info">
@@ -67,7 +53,7 @@
                         <li>
                             <form action="{{ route('locale.change') }}" method="POST">@csrf @method('PUT')
                                 <input type="hidden" name="locale" value="{{ app()->getLocale() === 'ur' ? 'en' : 'ur' }}">
-                                <button type="submit" class="btn btn-link text-start w-100 px-3 text-decoration-none text-reset"><i class="fas fa-language"></i> {{ app()->getLocale() === 'ur' ? __('English') : 'اردو' }}</button>
+                                <button type="submit"><i class="fas fa-language"></i> {{ app()->getLocale() === 'ur' ? __('English') : 'اردو' }}</button>
                             </form>
                         </li>
                         <li class="d-none" id="install-app-item"><a role="menuitem" href="#" id="install-app"><i class="fas fa-mobile-alt"></i> {{ __('Install app') }}</a></li>
@@ -76,12 +62,13 @@
                         @endcan
                         <li>
                             <form action="{{ route('logout') }}" method="POST" id="logout-form">@csrf
-                                <button type="submit" class="btn btn-link text-start w-100 px-3 text-decoration-none text-reset"><i class="fas fa-power-off"></i> {{ __('Logout') }}</button>
+                                <button type="submit"><i class="fas fa-power-off"></i> {{ __('Logout') }}</button>
                             </form>
                         </li>
                     </ul>
                 </div>
             </div>
+            <i class="fas fa-bars toggle-sidebar-left d-md-none" data-toggle-class="sidebar-left-opened" data-target="html" data-fire-event="sidebar-left-opened" aria-label="{{ __('Toggle sidebar') }}"></i>
         </div>
     </header>
 
