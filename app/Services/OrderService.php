@@ -53,7 +53,7 @@ class OrderService
             // Keep existing line ids where possible so delivered/invoiced links survive edits.
             $keep = [];
             foreach (array_values($data['items']) as $i => $item) {
-                $values = collect($lines[$i])->except(['product', 'net'])->all();
+                $values = collect($lines[$i])->except(['product', 'variant', 'net'])->all();
                 $existing = ! empty($item['id']) ? $order->items()->whereKey($item['id'])->first() : null;
                 if ($existing) {
                     $existing->update($values);
@@ -170,9 +170,9 @@ class OrderService
         }
         $done = $this->fulfilledBase($order->items()->pluck('id')->all());
         if (array_sum($done) > 0) {
-            $byProduct = $order->items()->get()->groupBy('product_id')->map(fn ($g) => $g->sum(fn ($i) => $done[$i->id] ?? 0));
-            foreach ($byProduct as $productId => $qty) {
-                $now = $lines->where('product_id', $productId)->sum('base_quantity');
+            $byProduct = $order->items()->get()->groupBy(fn ($i) => $i->product_id.'-'.(int) $i->variant_id)->map(fn ($g) => $g->sum(fn ($i) => $done[$i->id] ?? 0));
+            foreach ($byProduct as $key => $qty) {
+                $now = $lines->filter(fn ($l) => $key === $l['product_id'].'-'.(int) $l['variant_id'])->sum('base_quantity');
                 if ($qty > 0 && $now + 0.00001 < $qty) {
                     throw ValidationException::withMessages(['items' => __('You cannot order less than has already been delivered or invoiced.')]);
                 }

@@ -45,7 +45,7 @@
         <thead><tr><th>#</th><th>{{ __('Description') }}</th><th class="r">{{ __('Qty') }}</th><th class="r">{{ __('Rate') }}</th><th class="r">{{ __('Disc %') }}</th><th class="r">{{ __('Amount') }}</th></tr></thead>
         <tbody>
         @foreach ($order->items as $i)
-            <tr><td>{{ $loop->iteration }}</td><td>{{ $i->product->name }}</td><td class="r">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td>
+            <tr><td>{{ $loop->iteration }}</td><td>{{ $i->itemName() }}</td><td class="r">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td>
                 <td class="r">{{ money($i->price) }}</td><td class="r">{{ (float) $i->discount_percent ? qty($i->discount_percent) : '' }}</td><td class="r">{{ money($i->amount) }}</td></tr>
         @endforeach
         </tbody>

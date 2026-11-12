@@ -40,7 +40,7 @@ class DeliveryController extends Controller
         $order = null;
 
         if ($request->query('order')) {
-            $order = Order::with(['items.product.unit', 'items.product.units.unit', 'items.unit', 'party'])->where('type', 'sale_order')->findOrFail($request->query('order'));
+            $order = Order::with(['items.product.unit', 'items.variant', 'items.product.units.unit', 'items.unit', 'party'])->where('type', 'sale_order')->findOrFail($request->query('order'));
             abort_unless($order->isOpen(), 404);
             $delivery->fill(['party_id' => $order->party_id, 'order_id' => $order->id, 'warehouse_id' => $order->warehouse_id]);
             $delivery->setRelation('party', $order->party);
@@ -61,7 +61,7 @@ class DeliveryController extends Controller
     {
         $this->allow('deliveries.view');
 
-        return view('deliveries.show', ['delivery' => $delivery->load(['items.product', 'items.unit', 'party', 'order', 'invoice', 'warehouse', 'creator'])]);
+        return view('deliveries.show', ['delivery' => $delivery->load(['items.product', 'items.variant', 'items.unit', 'party', 'order', 'invoice', 'warehouse', 'creator'])]);
     }
 
     public function edit(Delivery $delivery): View|RedirectResponse
@@ -70,8 +70,8 @@ class DeliveryController extends Controller
         if ($delivery->invoice_id) {
             return back()->with('error', __('This challan has been invoiced and can no longer be edited.'));
         }
-        $delivery->load(['items.product.unit', 'items.product.units.unit', 'items.unit', 'party']);
-        $order = $delivery->order_id ? Order::with(['items.product.unit', 'items.product.units.unit', 'items.unit'])->find($delivery->order_id) : null;
+        $delivery->load(['items.product.unit', 'items.variant', 'items.product.units.unit', 'items.unit', 'party']);
+        $order = $delivery->order_id ? Order::with(['items.product.unit', 'items.variant', 'items.product.units.unit', 'items.unit'])->find($delivery->order_id) : null;
 
         return view('deliveries.form', $this->formData($delivery, $order));
     }
@@ -96,7 +96,7 @@ class DeliveryController extends Controller
     {
         $this->allow('deliveries.view');
 
-        return view('deliveries.print', ['delivery' => $delivery->load(['items.product', 'items.unit', 'party', 'order', 'branch', 'creator']), 'b' => Tenant::business()]);
+        return view('deliveries.print', ['delivery' => $delivery->load(['items.product', 'items.variant', 'items.unit', 'party', 'order', 'branch', 'creator']), 'b' => Tenant::business()]);
     }
 
     private function formData(Delivery $delivery, ?Order $order): array
@@ -109,7 +109,7 @@ class DeliveryController extends Controller
                 $mine = $existing->firstWhere('order_item_id', $oi->id);
                 $pendingBase = $oi->pending_base + ($mine ? (float) $mine->base_quantity : 0);
                 $rows->push([
-                    'order_item_id' => $oi->id, 'product_id' => $oi->product_id, 'name' => $oi->product->name,
+                    'order_item_id' => $oi->id, 'product_id' => $oi->product_id, 'variant_id' => $oi->variant_id, 'name' => $oi->itemName(),
                     'units' => $oi->product->unitOptions(), 'unit_id' => $mine?->unit_id ?? $oi->unit_id,
                     'ordered' => qty($oi->quantity).' '.$oi->unit->short_name,
                     'pending' => round($pendingBase / max((float) $oi->factor, 0.0001), 4),
@@ -118,7 +118,7 @@ class DeliveryController extends Controller
             }
         }
         foreach ($existing->whereNull('order_item_id') as $di) {
-            $rows->push(['order_item_id' => null, 'product_id' => $di->product_id, 'name' => $di->product->name,
+            $rows->push(['order_item_id' => null, 'product_id' => $di->product_id, 'variant_id' => $di->variant_id, 'name' => $di->itemName(),
                 'units' => $di->product->unitOptions(), 'unit_id' => $di->unit_id, 'ordered' => null, 'pending' => null, 'quantity' => (float) $di->quantity]);
         }
 
@@ -144,6 +144,7 @@ class DeliveryController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', $this->owned('products')],
+            'items.*.variant_id' => ['nullable', $this->owned('product_variants')],
             'items.*.unit_id' => ['required', $this->owned('units')],
             'items.*.quantity' => ['nullable', 'numeric', 'min:0'],
             'items.*.order_item_id' => ['nullable', 'integer'],

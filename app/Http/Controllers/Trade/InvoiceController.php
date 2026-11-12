@@ -71,7 +71,7 @@ class InvoiceController extends Controller
 
         // A return can start from the original invoice.
         if ($request->query('from') && str_ends_with($type, '_return')) {
-            $original = Invoice::with(['items.product', 'items.unit', 'party'])->where('type', str_replace('_return', '', $type))->findOrFail($request->query('from'));
+            $original = Invoice::with(['items.product', 'items.variant', 'items.unit', 'party'])->where('type', str_replace('_return', '', $type))->findOrFail($request->query('from'));
             $invoice->fill(['party_id' => $original->party_id, 'return_of_id' => $original->id, 'warehouse_id' => $original->warehouse_id]);
             $invoice->setRelation('returnOf', $original);
             $invoice->setRelation('party', $original->party);
@@ -93,7 +93,7 @@ class InvoiceController extends Controller
     /** Pending lines of an order (or every line of a quotation) as invoice lines. */
     private function linesFromOrder(Invoice $invoice, string $orderType, int $orderId, bool $link = true): array
     {
-        $order = Order::with(['items.product.unit', 'items.product.units.unit', 'party'])->where('type', $orderType)->findOrFail($orderId);
+        $order = Order::with(['items.product.unit', 'items.variant', 'items.product.units.unit', 'party'])->where('type', $orderType)->findOrFail($orderId);
         abort_if($link && ! $order->isOpen(), 404);
         $invoice->fill(['party_id' => $order->party_id, 'warehouse_id' => $order->warehouse_id, 'reference' => $order->reference ?: $order->number,
             'payment_mode' => 'credit', 'discount' => $link ? 0 : $order->discount, 'other_charges' => $link ? 0 : $order->other_charges]);
@@ -105,7 +105,7 @@ class InvoiceController extends Controller
 
         return $order->items
             ->filter(fn ($oi) => ! $link || $oi->pending_base > 0)
-            ->map(fn ($oi) => $this->lineData($oi->product, [
+            ->map(fn ($oi) => $this->lineData($oi->product, $oi->variant, [
                 'unit_id' => $oi->unit_id, 'quantity' => $link ? $oi->pending : (float) $oi->quantity, 'price' => (float) $oi->price,
                 'discount_percent' => (float) $oi->discount_percent, 'tax_rate' => (float) $oi->tax_rate,
                 'order_item_id' => $link ? $oi->id : null, 'max_quantity' => $link ? $oi->pending : null,
@@ -115,7 +115,7 @@ class InvoiceController extends Controller
     /** Un-invoiced challans of one customer as invoice lines (quantities fixed). */
     private function linesFromChallans(Invoice $invoice, array $ids): array
     {
-        $challans = Delivery::with(['items.product.unit', 'items.product.units.unit', 'items.orderItem', 'party', 'items.product.prices'])
+        $challans = Delivery::with(['items.product.unit', 'items.variant', 'items.product.units.unit', 'items.orderItem', 'party', 'items.product.prices'])
             ->whereIn('id', $ids)->whereNull('invoice_id')->orderBy('date')->get();
         abort_if($challans->isEmpty() || $challans->pluck('party_id')->unique()->count() > 1, 404);
         $party = $challans->first()->party;
@@ -128,9 +128,9 @@ class InvoiceController extends Controller
             $oi = $di->orderItem;
             $price = $oi
                 ? (float) $oi->price / max((float) $oi->factor, 0.0001) * (float) $di->factor
-                : $di->product->priceFor($party->price_level_id, isset($special[$di->product_id]) ? (float) $special[$di->product_id] : null) * (float) $di->factor;
+                : $di->product->priceFor($party->price_level_id, isset($special[$di->product_id]) ? (float) $special[$di->product_id] : null, $di->variant) * (float) $di->factor;
 
-            return $this->lineData($di->product, [
+            return $this->lineData($di->product, $di->variant, [
                 'unit_id' => $di->unit_id, 'quantity' => (float) $di->quantity, 'price' => round($price, 4),
                 'discount_percent' => (float) ($oi?->discount_percent ?? 0), 'tax_rate' => (float) ($oi?->tax_rate ?? 0),
                 'delivery_item_id' => $di->id, 'lock' => true, 'note' => $di->delivery->number,
@@ -138,18 +138,9 @@ class InvoiceController extends Controller
         })->values()->all();
     }
 
-    private function lineData($product, array $values): array
+    private function lineData($product, $variant, array $values): array
     {
-        return $values + [
-            'product_id' => $product->id,
-            'name' => $product->name,
-            'units' => $product->loadMissing('unit', 'units.unit')->unitOptions(),
-            'avg_cost' => (float) $product->avg_cost,
-            'base_sale' => (float) $product->sale_price,
-            'base_purchase' => (float) $product->purchase_price,
-            'track_batches' => (bool) $product->track_batches,
-            'stock' => null,
-        ];
+        return $values + $product->loadMissing('unit', 'units.unit')->lineFields($variant) + ['stock' => null];
     }
 
     public function store(Request $request, string $doc): RedirectResponse|JsonResponse
@@ -178,7 +169,7 @@ class InvoiceController extends Controller
     public function show(string $doc, Invoice $invoice): View
     {
         $this->authorizeDoc($doc, $invoice, 'view');
-        $invoice->load(['items.product', 'items.unit', 'party', 'warehouse', 'branch', 'creator', 'returnOf', 'returns', 'allocations.entry', 'order', 'deliveries']);
+        $invoice->load(['items.product', 'items.variant', 'items.unit', 'party', 'warehouse', 'branch', 'creator', 'returnOf', 'returns', 'allocations.entry', 'order', 'deliveries']);
 
         return view('trade.show', ['doc' => $doc, 'meta' => self::DOCS[$doc], 'invoice' => $invoice]);
     }
@@ -189,7 +180,7 @@ class InvoiceController extends Controller
         if ($invoice->returns()->exists()) {
             return back()->with('error', __('This invoice has returns against it and can no longer be edited.'));
         }
-        $invoice->load(['items.product.unit', 'items.product.units.unit', 'items.unit', 'party', 'returnOf.items.product', 'returnOf.items.unit', 'allocations', 'order']);
+        $invoice->load(['items.product.unit', 'items.variant', 'items.product.units.unit', 'items.unit', 'party', 'returnOf.items.product', 'returnOf.items.variant', 'returnOf.items.unit', 'allocations', 'order']);
 
         return view('trade.form', $this->formData($doc, $invoice));
     }
@@ -213,7 +204,7 @@ class InvoiceController extends Controller
     public function print(Request $request, string $doc, Invoice $invoice): View
     {
         $this->authorizeDoc($doc, $invoice, 'view');
-        $invoice->load(['items.product', 'items.unit', 'party', 'branch', 'creator', 'returnOf']);
+        $invoice->load(['items.product', 'items.variant', 'items.unit', 'party', 'branch', 'creator', 'returnOf']);
         $layout = $request->query('layout', Tenant::business()->setting('invoice_layout'));
 
         return view($layout === 'thermal' ? 'trade.print-thermal' : 'trade.print-a4', [
@@ -285,9 +276,6 @@ class InvoiceController extends Controller
     private function formLines(Invoice $invoice, ?array $prefill = null): array
     {
         $map = fn ($item, bool $fromOriginal) => [
-            'product_id' => $item->product_id,
-            'name' => $item->product->name,
-            'units' => $item->product->loadMissing('unit', 'units.unit')->unitOptions(),
             'unit_id' => $item->unit_id,
             'quantity' => $fromOriginal ? 0 : (float) $item->quantity,
             'max_quantity' => $fromOriginal ? (float) $item->quantity : null,
@@ -298,14 +286,10 @@ class InvoiceController extends Controller
             'order_item_id' => $fromOriginal ? null : $item->order_item_id,
             'delivery_item_id' => $fromOriginal ? null : $item->delivery_item_id,
             'lock' => ! $fromOriginal && $item->delivery_item_id,
-            'avg_cost' => (float) $item->product->avg_cost,
-            'base_sale' => (float) $item->product->sale_price,
-            'base_purchase' => (float) $item->product->purchase_price,
-            'track_batches' => (bool) $item->product->track_batches,
             'batch_no' => $fromOriginal ? null : $item->batch_no,
             'expiry_date' => $fromOriginal ? null : $item->expiry_date?->toDateString(),
             'stock' => null,
-        ];
+        ] + $item->product->loadMissing('unit', 'units.unit')->lineFields($item->variant);
 
         // Re-show what the user typed after a validation error.
         if ($old = $this->oldLines()) {
@@ -348,6 +332,7 @@ class InvoiceController extends Controller
             'payment_account_id' => ['nullable', $this->owned('accounts')->whereIn('subtype', ['cash', 'bank'])],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', $this->owned('products')],
+            'items.*.variant_id' => ['nullable', $this->owned('product_variants')],
             'items.*.unit_id' => ['required', $this->owned('units')],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.price' => ['required', 'numeric', 'min:0'],

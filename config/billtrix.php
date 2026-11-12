@@ -60,6 +60,7 @@ return [
         'fbr_service_fee' => 1,        // Re 1 POS service fee per invoice
         'fbr_sale_type' => 'Goods at standard rate (default)',
         'batches' => false,
+        'variants' => false,         // product variations: size, colour, … with stock per variation
         'expiry_alert_days' => 60,
         'quotation_terms' => "Prices valid for 7 days.\nDelivery within 3 working days of confirmation.",
     ],
@@ -181,7 +182,7 @@ return [
         'accounts' => ['view', 'create', 'edit', 'delete'],
         'parties' => ['view', 'create', 'edit', 'delete'],
         'vouchers' => ['view', 'create', 'edit', 'delete'],
-        'products' => ['view', 'create', 'edit', 'delete'],
+        'products' => ['view', 'create', 'edit', 'delete', 'labels'],
         'stock' => ['view', 'adjust', 'transfer'],
         'sales' => ['view', 'create', 'edit', 'delete', 'override_credit_limit', 'below_cost'],
         'sale_returns' => ['view', 'create', 'delete'],
@@ -207,6 +208,6 @@ return [
             'cash_sessions.*', 'quotations.*', 'sales_orders.*', 'purchase_orders.*', 'deliveries.*', 'imports.*', 'api.use', 'fbr.manage'],
         'Accountant' => ['dashboard.view', 'accounts.*', 'parties.*', 'vouchers.*', 'reports.*', 'sales.view', 'purchases.view', 'products.view', 'stock.view', 'cash_sessions.view', 'imports.parties', 'fbr.manage'],
         'Cashier' => ['pos.use', 'sales.view', 'sales.create', 'sale_returns.view', 'sale_returns.create', 'parties.view', 'parties.create', 'products.view', 'quotations.view', 'quotations.create', 'api.use'],
-        'Storekeeper' => ['products.view', 'stock.*', 'purchases.view', 'reports.inventory', 'deliveries.*', 'sales_orders.view', 'purchase_orders.view'],
+        'Storekeeper' => ['products.view', 'products.labels', 'stock.*', 'purchases.view', 'reports.inventory', 'deliveries.*', 'sales_orders.view', 'purchase_orders.view'],
     ],
 ];

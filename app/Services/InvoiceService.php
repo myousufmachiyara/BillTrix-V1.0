@@ -90,7 +90,7 @@ class InvoiceService
             ] + $totals);
             $invoice->save();
 
-            $saved = $invoice->items()->createMany($lines->map(fn ($l) => collect($l)->except(['product', 'net', 'order_id', 'delivery', 'delivery_cost'])->all())->all());
+            $saved = $invoice->items()->createMany($lines->map(fn ($l) => collect($l)->except(['product', 'variant', 'net', 'order_id', 'delivery', 'delivery_cost'])->all())->all());
             $lines = $lines->values()->map(fn ($l, $i) => $l + ['model' => $saved[$i]]);
 
             $this->post($invoice, $lines, $totals);
@@ -191,8 +191,8 @@ class InvoiceService
     /** "2 × Soap @ 120" per line, for the audit trail. */
     private function lineSummary(Invoice $invoice): array
     {
-        return InvoiceItem::with('product:id,name')->where('invoice_id', $invoice->id)->orderBy('id')->get()
-            ->map(fn ($i) => qty($i->quantity).' × '.$i->product->name.' @ '.money($i->price).((float) $i->discount_percent ? ' −'.qty($i->discount_percent).'%' : ''))
+        return InvoiceItem::with('product:id,name', 'variant:id,name')->where('invoice_id', $invoice->id)->orderBy('id')->get()
+            ->map(fn ($i) => qty($i->quantity).' × '.$i->product->name.($i->variant ? ' — '.$i->variant->name : '').' @ '.money($i->price).((float) $i->discount_percent ? ' −'.qty($i->discount_percent).'%' : ''))
             ->all();
     }
 
@@ -214,11 +214,11 @@ class InvoiceService
 
             if ($returnable !== null) {
                 $left = $returnable[(int) ($item['source_item_id'] ?? 0)] ?? null;
-                if ($left === null || $left['product_id'] !== $product->id) {
-                    throw ValidationException::withMessages(["items.$i.product_id" => "\"{$product->name}\" is not on the original invoice."]);
+                if ($left === null || $left['product_id'] !== $product->id || $left['variant_id'] !== $line['variant_id']) {
+                    throw ValidationException::withMessages(["items.$i.product_id" => "\"{$this->lineName($line)}\" is not on the original invoice."]);
                 }
                 if ($line['base_quantity'] > $left['qty'] + 0.00001) {
-                    throw ValidationException::withMessages(["items.$i.quantity" => "Only {$left['qty']} {$product->unit?->short_name} of \"{$product->name}\" can still be returned."]);
+                    throw ValidationException::withMessages(["items.$i.quantity" => "Only {$left['qty']} {$product->unit?->short_name} of \"{$this->lineName($line)}\" can still be returned."]);
                 }
             }
 
@@ -266,11 +266,11 @@ class InvoiceService
         $pending = $this->orders->pendingBase($orderItemIds);
 
         $lines = $lines->map(function (array $l, int $i) use ($type, $party, $orderType, $orderItems, $deliveryItems, &$pending) {
-            $name = $l['product']->name;
+            $name = $this->lineName($l);
 
             if ($l['delivery_item_id']) {
                 $di = $deliveryItems->get($l['delivery_item_id']);
-                if ($type !== 'sale' || ! $di || $di->delivery->party_id !== $party->id || $di->product_id !== $l['product_id'] || $di->delivery->invoice_id) {
+                if ($type !== 'sale' || ! $di || $di->delivery->party_id !== $party->id || $di->product_id !== $l['product_id'] || $di->variant_id !== $l['variant_id'] || $di->delivery->invoice_id) {
                     throw ValidationException::withMessages(["items.$i.product_id" => "\"{$name}\" does not match an open delivery challan of this customer."]);
                 }
                 if (abs((float) $di->base_quantity - $l['base_quantity']) > 0.00001) {
@@ -286,7 +286,7 @@ class InvoiceService
 
             if ($l['order_item_id']) {
                 $oi = $orderItems->get($l['order_item_id']);
-                if (! $oi || $oi->order->type !== $orderType || $oi->order->party_id !== $party->id || $oi->product_id !== $l['product_id'] || $oi->order->status === 'cancelled') {
+                if (! $oi || $oi->order->type !== $orderType || $oi->order->party_id !== $party->id || $oi->product_id !== $l['product_id'] || $oi->variant_id !== $l['variant_id'] || $oi->order->status === 'cancelled') {
                     throw ValidationException::withMessages(["items.$i.product_id" => "\"{$name}\" does not match an open order of this party."]);
                 }
                 $left = $pending[$oi->id] ?? 0;
@@ -321,6 +321,7 @@ class InvoiceService
 
         return $original->items->mapWithKeys(fn ($it) => [$it->id => [
             'product_id' => $it->product_id,
+            'variant_id' => $it->variant_id,
             'qty' => round((float) $it->base_quantity - (float) ($returned[$it->id] ?? 0), 4),
             'unit_cost' => (float) $it->unit_cost,
         ]])->all();
@@ -405,9 +406,9 @@ class InvoiceService
             return;
         }
         foreach ($lines as $i => $l) {
-            $cost = (float) $l['product']->avg_cost;
+            $cost = (float) ($l['variant'] ?? $l['product'])->avg_cost;
             if ($cost > 0 && $l['base_quantity'] > 0 && ($l['net'] / $l['base_quantity']) + 0.0001 < $cost) {
-                throw ValidationException::withMessages(["items.$i.price" => "\"{$l['product']->name}\" is priced below its cost (".number_format($cost * $l['factor'], 2).').']);
+                throw ValidationException::withMessages(["items.$i.price" => "\"{$this->lineName($l)}\" is priced below its cost (".number_format($cost * $l['factor'], 2).').']);
             }
         }
     }
@@ -432,7 +433,7 @@ class InvoiceService
                         $fromChallans += $unitCost * $l['base_quantity'];
                     } else {
                         // A chosen batch is honoured; otherwise the stock service picks earliest expiry first.
-                        $unitCost = $this->stock->issue($l['product'], $wh, $l['base_quantity'], $date, 'sale', $invoice, null, null, $l['batch_no']);
+                        $unitCost = $this->stock->issue($l['product'], $wh, $l['base_quantity'], $date, 'sale', $invoice, null, null, $l['batch_no'], $l['variant']);
                     }
                     $l['model']->update(['unit_cost' => $unitCost]);
                     $cost += $unitCost * $l['base_quantity'];
@@ -456,8 +457,8 @@ class InvoiceService
             case 'sale_return':
                 $source = $invoice->return_of_id ? $this->returnableQuantities($invoice->return_of_id, $invoice) : [];
                 foreach ($lines as $l) {
-                    $unitCost = $source[$l['source_item_id']]['unit_cost'] ?? (float) $l['product']->avg_cost;
-                    $this->stock->receive($l['product'], $wh, $l['base_quantity'], $unitCost, $date, 'sale_return', $invoice, null, $this->returnBatch($invoice, $l));
+                    $unitCost = $source[$l['source_item_id']]['unit_cost'] ?? (float) ($l['variant'] ?? $l['product'])->avg_cost;
+                    $this->stock->receive($l['product'], $wh, $l['base_quantity'], $unitCost, $date, 'sale_return', $invoice, null, $this->returnBatch($invoice, $l), $l['variant']);
                     $l['model']->update(['unit_cost' => $unitCost]);
                     $cost += $l['product']->track_stock ? $unitCost * $l['base_quantity'] : 0;
                 }
@@ -488,14 +489,15 @@ class InvoiceService
                     $l['model']->update(['unit_cost' => $unitCost]);
                     if ($l['product']->track_stock) {
                         $isReturn
-                            ? $this->stock->issue($l['product'], $wh, $l['base_quantity'], $date, 'purchase_return', $invoice, $unitCost, null, $l['batch_no'])
-                            : $this->stock->receive($l['product'], $wh, $l['base_quantity'], $unitCost, $date, 'purchase', $invoice, null, ['batch_no' => $l['batch_no'], 'expiry_date' => $l['expiry_date']]);
+                            ? $this->stock->issue($l['product'], $wh, $l['base_quantity'], $date, 'purchase_return', $invoice, $unitCost, null, $l['batch_no'], $l['variant'])
+                            : $this->stock->receive($l['product'], $wh, $l['base_quantity'], $unitCost, $date, 'purchase', $invoice, null, ['batch_no' => $l['batch_no'], 'expiry_date' => $l['expiry_date']], $l['variant']);
                         $stockValue += $l['net'] * $k;
                     } else {
                         $expense += $l['net'] * $k;
                     }
                     if (! $isReturn) {
-                        $l['product']->forceFill(['purchase_price' => $l['price'] / max($l['factor'], 0.0001)])->saveQuietly();
+                        // Remember the last purchase price (on the variation when there is one).
+                        ($l['variant'] ?? $l['product'])->forceFill(['purchase_price' => $l['price'] / max($l['factor'], 0.0001)])->saveQuietly();
                     }
                 }
                 $stockValue = round($stockValue, 2);

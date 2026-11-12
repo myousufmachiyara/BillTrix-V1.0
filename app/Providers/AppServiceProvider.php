@@ -34,6 +34,8 @@ class AppServiceProvider extends ServiceProvider
             'batch' => \App\Models\Batch::class,
             'journal_entry' => \App\Models\JournalEntry::class,
             'product' => \App\Models\Product::class,
+            'product_variant' => \App\Models\ProductVariant::class,
+            'product_attribute' => \App\Models\ProductAttribute::class,
             'account' => \App\Models\Account::class,
             'order' => \App\Models\Order::class,
             'business' => \App\Models\Business::class,

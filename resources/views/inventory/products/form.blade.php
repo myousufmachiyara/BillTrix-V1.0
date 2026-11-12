@@ -41,6 +41,55 @@
                 </div>
             </x-card>
 
+            @feature('variants')
+            @php
+                $hasVariants = (bool) old('has_variants', $product->has_variants);
+                $rows = old('variants', $variantRows);
+            @endphp
+            <x-card title="Variations">
+                <input type="hidden" name="has_variants_shown" value="1">
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" name="has_variants" value="1" id="has_variants" @checked($hasVariants) @disabled($variantsLocked)>
+                    <label class="form-check-label" for="has_variants">{{ __('This product comes in variations (size, colour…)') }}</label>
+                    @if ($variantsLocked && $hasVariants)<input type="hidden" name="has_variants" value="1">@endif
+                </div>
+                @if ($variantsLocked)<p class="small text-muted mb-2">{{ __('Variations cannot be switched on or off once the product has stock movements.') }}</p>@endif
+
+                <div id="variant-builder" class="{{ $hasVariants ? '' : 'd-none' }}">
+                    @if ($attributes->isEmpty())
+                        <div class="alert alert-info py-2 small">{{ __('First add attributes such as Size or Colour.') }}
+                            @can('products.view')<a href="{{ route('attributes.index') }}">{{ __('Attributes') }}</a>@endcan</div>
+                    @else
+                        <p class="small text-muted mb-2">{{ __('Tick the values this product comes in, then create the variations. Each gets its own SKU, barcode, price and stock. Leave SKU or barcode blank to create them automatically; blank prices use the product price.') }}</p>
+                        <div class="row g-2 mb-2" id="attr-pickers">
+                            @foreach ($attributes as $a)
+                                <div class="col-md-6">
+                                    <div class="small fw-semibold mb-1">{{ $a->name }}</div>
+                                    @foreach ($a->values as $v)
+                                        <label class="btn btn-sm btn-outline-secondary mb-1 attr-chip">
+                                            <input type="checkbox" class="d-none" data-attr="{{ $a->id }}" data-attr-sort="{{ $a->sort }}" value="{{ $v->id }}" data-label="{{ $v->value }}"
+                                                @checked(collect($rows)->contains(fn ($r) => in_array($v->id, array_map('intval', $r['value_ids'] ?? []), true)))> {{ $v->value }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                            @endforeach
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="make-variants"><i class="fas fa-th"></i> {{ __('Create variations') }}</button>
+                    @endif
+                    <div class="table-responsive">
+                    <table class="table table-sm align-middle" id="variants">
+                        <thead><tr>
+                            <th>{{ __('Variation') }}</th><th>{{ __('SKU') }}</th><th>{{ __('Barcode') }}</th><th>{{ __('Sale price') }}</th><th>{{ __('Purchase price') }}</th>
+                            <th>{{ __('Reorder level') }}</th>@unless ($product->exists)@can('stock.adjust')<th>{{ __('Opening qty') }}</th>@endcan @endunless
+                            <th>{{ __('Active') }}</th><th></th>
+                        </tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    </div>
+                </div>
+            </x-card>
+            @endfeature
+
             @feature('multi_unit')
             <x-card title="Packing / alternate units">
                 <p class="small text-muted">{{ __('Example: base unit') }} <em>{{ __('Pcs') }}</em>, 1 <em>{{ __('Carton') }}</em> = 24 {{ __('Pcs') }}. {{ __('Prices left blank are calculated from the base price.') }}</p>
@@ -109,6 +158,65 @@
 @endsection
 @push('scripts')
 <script>
+    @feature('variants')
+    (function () {
+        const rows = @js(array_values($rows ?? []));
+        const valueLabel = {};
+        document.querySelectorAll('#attr-pickers input').forEach((c) => { valueLabel[c.value] = { label: c.dataset.label, attr: +c.dataset.attr, sort: +c.dataset.attrSort }; });
+        const opening = {{ (! $product->exists && auth()->user()->can('stock.adjust')) ? 'true' : 'false' }};
+        const $tbody = document.querySelector('#variants tbody');
+        let n = 0;
+        const esc = (v) => BT.esc(v === null || v === undefined ? '' : String(v));
+        const key = (ids) => ids.map(Number).sort((a, b) => a - b).join('-');
+        const nameOf = (ids) => ids.map((id) => valueLabel[id]).filter(Boolean).sort((a, b) => a.sort - b.sort || a.attr - b.attr).map((v) => v.label).join(' / ');
+
+        function addRow(r) {
+            const i = n++;
+            const ids = (r.value_ids || []).map(Number);
+            const hidden = ids.map((id) => `<input type="hidden" name="variants[${i}][value_ids][]" value="${id}">`).join('')
+                + (r.id ? `<input type="hidden" name="variants[${i}][id]" value="${r.id}">` : '');
+            const stock = r.stock !== undefined && r.stock !== null ? `<div class="small text-muted">${BT.qty(r.stock)} {{ __('in stock') }}</div>` : '';
+            const tr = document.createElement('tr');
+            tr.dataset.key = key(ids);
+            tr.innerHTML = `<td class="text-nowrap">${hidden}<span class="fw-semibold">${esc(r.name || nameOf(ids))}</span>${stock}</td>
+                <td><input name="variants[${i}][sku]" class="form-control form-control-sm" style="min-width:120px" value="${esc(r.sku)}" placeholder="{{ __('auto') }}"></td>
+                <td><input name="variants[${i}][barcode]" class="form-control form-control-sm" style="min-width:130px" value="${esc(r.barcode)}" placeholder="{{ __('auto') }}"></td>
+                <td><input name="variants[${i}][sale_price]" type="number" step="any" min="0" class="form-control form-control-sm" value="${esc(r.sale_price)}" placeholder="{{ __('= product') }}"></td>
+                <td><input name="variants[${i}][purchase_price]" type="number" step="any" min="0" class="form-control form-control-sm" value="${esc(r.purchase_price)}" placeholder="{{ __('= product') }}"></td>
+                <td><input name="variants[${i}][reorder_level]" type="number" step="any" min="0" class="form-control form-control-sm" value="${esc(r.reorder_level)}" placeholder="{{ __('= product') }}"></td>
+                ${opening ? `<td><input name="variants[${i}][opening_qty]" type="number" step="any" min="0" class="form-control form-control-sm" value="${esc(r.opening_qty)}"></td>` : ''}
+                <td class="text-center"><input type="checkbox" class="form-check-input" name="variants[${i}][is_active]" value="1" ${r.is_active === false || r.is_active === '0' ? '' : 'checked'}></td>
+                <td><button type="button" class="btn btn-link text-danger p-0" title="{{ __('Remove') }}"><i class="fas fa-times"></i></button></td>`;
+            tr.querySelector('button').addEventListener('click', () => tr.remove());
+            $tbody.appendChild(tr);
+        }
+        rows.forEach((r) => addRow(Object.assign({}, r, { is_active: r.is_active === undefined ? true : (r.is_active === true || r.is_active === '1' || r.is_active === 1) })));
+
+        // Every combination of the ticked values (one value per attribute).
+        document.getElementById('make-variants')?.addEventListener('click', () => {
+            const groups = {};
+            document.querySelectorAll('#attr-pickers input:checked').forEach((c) => { (groups[c.dataset.attr] = groups[c.dataset.attr] || []).push(+c.value); });
+            const lists = Object.values(groups);
+            if (!lists.length) return;
+            const combos = lists.reduce((acc, list) => acc.flatMap((a) => list.map((v) => a.concat(v))), [[]]);
+            const have = new Set([...$tbody.querySelectorAll('tr')].map((tr) => tr.dataset.key));
+            combos.forEach((ids) => { if (!have.has(key(ids))) addRow({ value_ids: ids, is_active: true }); });
+        });
+        document.querySelectorAll('#attr-pickers input').forEach((c) => {
+            const sync = () => c.closest('label').classList.toggle('active', c.checked);
+            c.addEventListener('change', sync); sync();
+        });
+        const toggle = document.getElementById('has_variants');
+        const batches = document.querySelector('[name=track_batches][type=checkbox]');
+        const apply = () => {
+            document.getElementById('variant-builder').classList.toggle('d-none', !toggle.checked);
+            if (batches) { if (toggle.checked) batches.checked = false; batches.disabled = toggle.checked; }
+            document.querySelectorAll('[name=opening_qty]').forEach((el) => el.closest('[class*=col-]').classList.toggle('d-none', toggle.checked));
+        };
+        toggle?.addEventListener('change', apply);
+        if (toggle) apply();
+    })();
+    @endfeature
     (function () {
         let i = {{ count($packs) }};
         document.getElementById('add-pack')?.addEventListener('click', function () {

@@ -6,11 +6,14 @@
     @if ($warehouses->count() > 1)
         <div class="col-md-2"><label class="form-label small mb-1">{{ __('Warehouse') }}</label><select name="warehouse_id" class="form-select form-select-sm"><option value="">{{ __('All') }}</option>@foreach ($warehouses as $id => $n)<option value="{{ $id }}" @selected($warehouseId === $id)>{{ $n }}</option>@endforeach</select></div>
     @endif
+    @if ($product?->has_variants)
+        <div class="col-md-2"><label class="form-label small mb-1">{{ __('Variation') }}</label><select name="variant_id" class="form-select form-select-sm"><option value="">{{ __('All') }}</option>@foreach ($product->variants as $v)<option value="{{ $v->id }}" @selected($variantId === $v->id)>{{ $v->name }}</option>@endforeach</select></div>
+    @endif
     <x-date-range :from="$from" :to="$to" />
     <div class="col-auto"><button class="btn btn-sm btn-primary">{{ __('Show') }}</button> <button type="button" onclick="window.print()" class="btn btn-sm btn-default"><i class="fas fa-print"></i></button></div>
 </form>
 @if ($data)
-    @include('reports._header', ['title' => 'Stock movement — '.$product->name, 'period' => \Carbon\Carbon::parse($from)->format('d M Y').' – '.\Carbon\Carbon::parse($to)->format('d M Y')])
+    @include('reports._header', ['title' => __('Stock Movement').' — '.$product->name.($variantId ? ' — '.$product->variants->firstWhere('id', $variantId)->name : ''), 'period' => \Carbon\Carbon::parse($from)->format('d M Y').' – '.\Carbon\Carbon::parse($to)->format('d M Y')])
     <x-card :body="false">
         <table class="table table-sm mb-0">
             <thead class="table-light"><tr><th>{{ __('Date') }}</th><th>{{ __('Type') }}</th><th>{{ __('Document') }}</th><th>{{ __('Warehouse') }}</th><th class="num">{{ __('In') }}</th><th class="num">{{ __('Out') }}</th><th class="num">{{ __('Balance') }}</th></tr></thead>
@@ -18,7 +21,7 @@
                 <tr class="fw-semibold"><td colspan="6">{{ __('Opening') }}</td><td class="num">{{ qty($data['opening']) }}</td></tr>
                 @foreach ($data['rows'] as $m)
                     <tr><td>{{ $m->date->format('d-m-Y') }}</td><td>{{ __(\App\Models\StockMovement::TYPES[$m->type] ?? $m->type) }} @if ($m->reason)<small class="text-muted">({{ $m->reason }})</small>@endif</td>
-                        <td>{{ $m->source?->number }}</td><td>{{ $m->warehouse->name }}</td>
+                        <td>{{ $m->source?->number }}@if ($m->variant && ! $variantId) <span class="badge bg-light text-dark border">{{ $m->variant->name }}</span>@endif</td><td>{{ $m->warehouse->name }}</td>
                         <td class="num text-success">{{ $m->quantity > 0 ? qty($m->quantity) : '' }}</td><td class="num text-danger">{{ $m->quantity < 0 ? qty(-$m->quantity) : '' }}</td><td class="num">{{ qty($m->running) }}</td></tr>
                 @endforeach
             </tbody>

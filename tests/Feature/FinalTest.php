@@ -56,8 +56,8 @@ class FinalTest extends TestCase
 
         auth()->logout();
         Tenant::forget();
-        $this->post('/login', ['email' => $this->owner->email, 'password' => 'wrong']);
-        $this->post('/login', ['email' => $this->owner->email, 'password' => 'secret123']);
+        $this->post('/login', ['login' => $this->owner->email, 'password' => 'wrong']);
+        $this->post('/login', ['login' => $this->owner->email, 'password' => 'secret123']);
         $this->assertTrue(AuditLog::withoutGlobalScopes()->where('event', 'login_failed')->exists());
         $this->assertTrue(AuditLog::withoutGlobalScopes()->where('event', 'login')->where('user_id', $this->owner->id)->exists());
         // Passwords never reach the log.
@@ -184,5 +184,21 @@ class FinalTest extends TestCase
         $this->postJson('/pos', ['client_uuid' => (string) \Illuminate\Support\Str::uuid(), 'sold_at' => now()->addDay()->toDateString()] + $body)->assertStatus(422);
 
         $this->get('/pos')->assertOk()->assertSee('manifest.webmanifest')->assertSee('queueModal', false);
+    }
+
+    public function test_sign_in_with_username_or_email(): void
+    {
+        $this->setUpBusiness();
+        $this->artisan('billtrix:set-login', ['username' => 'admin', '--user' => $this->owner->email, '--password' => '12345678'])->assertSuccessful();
+        auth()->logout();
+
+        $this->post('/login', ['login' => 'admin', 'password' => 'wrong-pass'])->assertSessionHasErrors('login');
+        $this->post('/login', ['login' => 'admin', 'password' => '12345678'])->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($this->owner->fresh());
+        auth()->logout();
+        $this->post('/login', ['login' => $this->owner->email, 'password' => '12345678'])->assertRedirect(route('dashboard'));
+
+        $this->postJson('/api/v1/auth/login', ['login' => 'admin', 'password' => '12345678', 'device_name' => 'phone'])->assertOk()->assertJsonStructure(['token']);
+        $this->postJson('/api/v1/auth/login', ['email' => $this->owner->email, 'password' => '12345678', 'device_name' => 'phone'])->assertOk();
     }
 }

@@ -182,12 +182,7 @@
             'Remove this bill', 'Waiting for connection', 'Remove this bill? It will not be recorded.', 'PROVISIONAL RECEIPT — OFFLINE', 'Ref', 'Discount', 'TOTAL', 'Paid',
             'Bill number will be issued when this device is back online.', 'No connection — bill saved on this device and will be sent automatically.'])
             ->mapWithKeys(fn ($k) => [$k => __($k)])),
-        quick: @js($quick->map(fn ($p) => [
-            'id' => $p->id, 'name' => $p->name, 'category_id' => $p->category_id, 'base_unit_id' => $p->unit_id, 'unit_id' => $p->unit_id,
-            'units' => $p->unitOptions(), 'sale_price' => (float) $p->sale_price, 'avg_cost' => (float) $p->avg_cost,
-            'tax_rate' => (float) ($p->taxRate?->rate ?? 0), 'stock' => $p->track_stock ? (float) ($p->stock ?? 0) : null,
-            'image' => $p->image_path ? asset('storage/'.$p->image_path) : null,
-        ])->values()),
+        quick: @js($quick),
     };
 </script>
 <script src="{{ asset('assets/vendor/jquery/jquery.min.js') }}"></script>

@@ -170,32 +170,57 @@ class ReportService
         })->sortByDesc('total')->values();
     }
 
+    /**
+     * Stock on hand and its value: one row per product, or one row per variation
+     * for products with variations (each valued at its own average cost).
+     */
     public function stock(?int $warehouseId, ?int $categoryId, bool $onlyInStock): Collection
     {
         $qty = StockBalance::query()
             ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
-            ->selectRaw('product_id, SUM(quantity) as qty')->groupBy('product_id')->pluck('qty', 'product_id');
+            ->selectRaw('product_id, variant_id, SUM(quantity) as qty')->groupBy('product_id', 'variant_id')->get()
+            ->mapWithKeys(fn ($r) => [$r->product_id.'-'.$r->variant_id => (float) $r->qty]);
 
-        return Product::with(['unit:id,short_name', 'category:id,name'])
+        return Product::with(['unit:id,short_name', 'category:id,name', 'variants'])
             ->where('track_stock', true)
             ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
-            ->when($onlyInStock, fn ($q) => $q->whereIn('id', $qty->filter(fn ($v) => (float) $v != 0)->keys()))
             ->orderBy('name')
-            ->get(['id', 'name', 'sku', 'unit_id', 'category_id', 'avg_cost', 'sale_price', 'reorder_level'])
-            ->map(function ($p) use ($qty) {
-                $p->qty = round((float) ($qty[$p->id] ?? 0), 4);
+            ->get(['id', 'name', 'sku', 'unit_id', 'category_id', 'avg_cost', 'sale_price', 'reorder_level', 'has_variants'])
+            ->flatMap(function (Product $p) use ($qty) {
+                if (! $p->has_variants) {
+                    $p->variant_id = null;
+                    $p->qty = round((float) ($qty[$p->id.'-0'] ?? 0), 4);
+
+                    return [$p];
+                }
+
+                return $p->variants->map(function ($v) use ($p, $qty) {
+                    $v->setRelation('product', $p);
+                    $row = new Product;
+                    $row->forceFill(['id' => $p->id, 'name' => $p->name.' — '.$v->name, 'sku' => $v->sku, 'unit_id' => $p->unit_id, 'category_id' => $p->category_id,
+                        'avg_cost' => $v->avg_cost, 'sale_price' => $v->salePrice(), 'reorder_level' => $v->reorderLevel()]);
+                    $row->setRelation('unit', $p->unit)->setRelation('category', $p->category);
+                    $row->variant_id = $v->id;
+                    $row->qty = round((float) ($qty[$p->id.'-'.$v->id] ?? 0), 4);
+
+                    return ($v->is_active || $row->qty != 0) ? $row : null;
+                })->filter()->all();
+            })
+            ->when($onlyInStock, fn ($rows) => $rows->filter(fn ($r) => $r->qty != 0))
+            ->map(function ($p) {
                 $p->value = round($p->qty * (float) $p->avg_cost, 2);
                 $p->retail_value = round($p->qty * (float) $p->sale_price, 2);
 
                 return $p;
-            });
+            })->values();
     }
 
-    public function stockMovement(Product $product, ?int $warehouseId, string $from, string $to): array
+    public function stockMovement(Product $product, ?int $warehouseId, string $from, string $to, ?int $variantId = null): array
     {
-        $scope = fn ($q) => $q->where('product_id', $product->id)->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId));
+        $scope = fn ($q) => $q->where('product_id', $product->id)->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when($variantId, fn ($q) => $q->where('variant_id', $variantId));
         $opening = (float) $scope(StockMovement::query())->whereDate('date', '<', $from)->sum('quantity');
-        $rows = $scope(StockMovement::query())->with(['warehouse:id,name', 'source'])
+        $rows = $scope(StockMovement::query())->with(['warehouse:id,name', 'source', 'variant:id,name'])
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->orderBy('date')->orderBy('id')->get();
 
@@ -216,23 +241,32 @@ class ReportService
             ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
             ->join('products', 'products.id', '=', 'invoice_items.product_id')
             ->join('units', 'units.id', '=', 'products.unit_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'invoice_items.variant_id')
             ->where('invoices.business_id', Tenant::idOrFail())
             ->whereIn('invoices.type', ['sale', 'sale_return'])
             ->whereDate('invoices.date', '>=', $from)->whereDate('invoices.date', '<=', $to)
             ->when($categoryId, fn ($q) => $q->where('products.category_id', $categoryId))
-            ->groupBy('products.id', 'products.name', 'units.short_name')
-            ->selectRaw("products.id, products.name, units.short_name as unit,
+            ->groupBy('products.id', 'products.name', 'product_variants.id', 'product_variants.name', 'units.short_name')
+            ->selectRaw("products.id, products.name, product_variants.name as variant_name, units.short_name as unit,
                 SUM({$sign} * invoice_items.base_quantity) as qty,
                 SUM({$sign} * (invoice_items.amount - invoice_items.tax_amount)) as revenue,
                 SUM({$sign} * invoice_items.base_quantity * invoice_items.unit_cost) as cost")
             ->orderByDesc('revenue')
             ->get()
             ->map(function ($r) {
+                $r->name = $r->variant_name ? $r->name.' — '.$r->variant_name : $r->name;
                 $r->profit = round($r->revenue - $r->cost, 2);
                 $r->margin = $r->revenue > 0 ? round($r->profit / $r->revenue * 100, 1) : 0;
 
                 return $r;
             });
+    }
+
+    /** Variations at or below their reorder level, shaped like products for the dashboard list. */
+    private function lowVariants(int $limit): Collection
+    {
+        return $this->stock(null, null, false)->filter(fn ($r) => $r->variant_id && (float) $r->reorder_level > 0 && $r->qty <= (float) $r->reorder_level)
+            ->take($limit)->values();
     }
 
     /** Headline numbers for the dashboard. */
@@ -267,9 +301,11 @@ class ReportService
             'stock_value' => $bal('inventory'),
             'trend' => $days,
             'low_stock' => Product::with('unit:id,short_name')->where('track_stock', true)->where('is_active', true)->where('reorder_level', '>', 0)
+                ->where('has_variants', false)
                 ->withSum('balances as qty', 'quantity')
                 ->whereRaw('COALESCE((SELECT SUM(quantity) FROM stock_balances WHERE stock_balances.product_id = products.id), 0) <= products.reorder_level')
-                ->orderBy('name')->limit(8)->get(['id', 'name', 'unit_id', 'reorder_level']),
+                ->orderBy('name')->limit(8)->get(['id', 'name', 'unit_id', 'reorder_level'])
+                ->concat($this->lowVariants(8)),
             'recent' => Invoice::with('party:id,name')->whereIn('type', ['sale', 'purchase'])->latest('id')->limit(8)->get(),
             'top_debtors' => Party::customers()->addSelect(['balance' => JournalLine::selectRaw('COALESCE(SUM(debit) - SUM(credit),0)')->whereColumn('party_id', 'parties.id')])
                 ->orderByDesc('balance')->limit(5)->get()->filter(fn ($p) => $p->balance > 0),

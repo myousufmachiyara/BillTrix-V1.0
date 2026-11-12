@@ -62,7 +62,7 @@ class OrderController extends Controller
 
         // A sales order can start from a quotation.
         if ($type === 'sale_order' && $request->query('quotation')) {
-            $quote = Order::with(['items.product.unit', 'items.product.units.unit', 'party'])->where('type', 'quotation')->findOrFail($request->query('quotation'));
+            $quote = Order::with(['items.product.unit', 'items.variant', 'items.product.units.unit', 'party'])->where('type', 'quotation')->findOrFail($request->query('quotation'));
             $order->fill(['party_id' => $quote->party_id, 'quotation_id' => $quote->id, 'reference' => $quote->reference,
                 'discount' => $quote->discount, 'other_charges' => $quote->other_charges, 'warehouse_id' => $quote->warehouse_id]);
             $order->setRelation('party', $quote->party);
@@ -85,7 +85,7 @@ class OrderController extends Controller
     {
         [$type, $perm] = $this->meta($orderDoc, $order);
         $this->allow("{$perm}.view");
-        $order->load(['items.product', 'items.unit', 'party', 'warehouse', 'creator', 'quotation', 'invoices', 'deliveries.invoice']);
+        $order->load(['items.product', 'items.variant', 'items.unit', 'party', 'warehouse', 'creator', 'quotation', 'invoices', 'deliveries.invoice']);
 
         return view('orders.show', [
             'doc' => $orderDoc, 'meta' => self::DOCS[$orderDoc], 'order' => $order,
@@ -100,7 +100,7 @@ class OrderController extends Controller
         if (in_array($order->status, ['cancelled', 'converted', 'completed'], true)) {
             return back()->with('error', __('This :n is :m and can\'t be edited.', ['n' => $order->title, 'm' => $order->status]));
         }
-        $order->load(['items.product.unit', 'items.product.units.unit', 'party']);
+        $order->load(['items.product.unit', 'items.variant', 'items.product.units.unit', 'party']);
 
         return view('orders.form', $this->formData($orderDoc, $order));
     }
@@ -138,7 +138,7 @@ class OrderController extends Controller
         [, $perm] = $this->meta($orderDoc, $order);
         $this->allow("{$perm}.view");
 
-        return view('orders.print', ['order' => $order->load(['items.product', 'items.unit', 'party', 'branch', 'creator']), 'b' => Tenant::business()]);
+        return view('orders.print', ['order' => $order->load(['items.product', 'items.variant', 'items.unit', 'party', 'branch', 'creator']), 'b' => Tenant::business()]);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
@@ -168,19 +168,13 @@ class OrderController extends Controller
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->pluck('name', 'id'),
             'lines' => $this->oldLines() ?? ($order->relationLoaded('items') ? $order->items->map(fn ($i) => [
                 'id' => $order->exists ? $i->id : null,
-                'product_id' => $i->product_id,
-                'name' => $i->product->name,
-                'units' => $i->product->unitOptions(),
                 'unit_id' => $i->unit_id,
                 'quantity' => (float) $i->quantity,
                 'price' => (float) $i->price,
                 'discount_percent' => (float) $i->discount_percent,
                 'tax_rate' => (float) $i->tax_rate,
-                'avg_cost' => (float) $i->product->avg_cost,
-                'base_sale' => (float) $i->product->sale_price,
-                'base_purchase' => (float) $i->product->purchase_price,
                 'stock' => null,
-            ])->values()->all() : []),
+            ] + $i->product->lineFields($i->variant))->values()->all() : []),
         ];
     }
 
@@ -202,6 +196,7 @@ class OrderController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['nullable', 'integer'],
             'items.*.product_id' => ['required', $this->owned('products')],
+            'items.*.variant_id' => ['nullable', $this->owned('product_variants')],
             'items.*.unit_id' => ['required', $this->owned('units')],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.price' => ['required', 'numeric', 'min:0'],

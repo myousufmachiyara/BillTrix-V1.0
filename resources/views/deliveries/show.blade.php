@@ -32,7 +32,7 @@
         <thead class="table-light"><tr><th>#</th><th>{{ __('Item') }}</th><th class="num">{{ __('Quantity') }}</th>@can('reports.profit')<th class="num text-muted">{{ __('Cost') }}</th>@endcan</tr></thead>
         <tbody>
         @foreach ($delivery->items as $i)
-            <tr><td>{{ $loop->iteration }}</td><td>{{ $i->product->name }}</td><td class="num">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td>
+            <tr><td>{{ $loop->iteration }}</td><td>{{ $i->itemName() }}</td><td class="num">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td>
                 @can('reports.profit')<td class="num text-muted">{{ money($i->unit_cost * $i->base_quantity) }}</td>@endcan</tr>
         @endforeach
         </tbody>

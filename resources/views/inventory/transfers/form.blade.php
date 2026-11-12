@@ -28,7 +28,7 @@
     $('#tr-product').on('select2:select', function (e) {
         const p = e.params.data, i = n++;
         const units = p.units.map(u => `<option value="${u.unit_id}">${BT.esc(u.name)}${u.factor !== 1 ? ' (' + BT.qty(u.factor) + ')' : ''}</option>`).join('');
-        $('#tr-lines tbody').append(`<tr><td><input type="hidden" name="items[${i}][product_id]" value="${p.id}">${BT.esc(p.name)}</td>
+        $('#tr-lines tbody').append(`<tr><td><input type="hidden" name="items[${i}][product_id]" value="${p.product_id || p.id}">${p.variant_id ? `<input type="hidden" name="items[${i}][variant_id]" value="${p.variant_id}">` : ''}${BT.esc(p.name)}</td>
             <td class="num">${BT.qty(p.stock || 0)}</td>
             <td><select name="items[${i}][unit_id]" class="form-select form-select-sm">${units}</select></td>
             <td><input type="number" step="any" min="0" name="items[${i}][quantity]" class="form-control form-control-sm text-end" required></td>

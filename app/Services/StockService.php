@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Batch;
 use App\Models\BatchStock;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\StockBalance;
 use App\Models\StockMovement;
 use App\Support\Tenant;
@@ -18,81 +19,92 @@ use Illuminate\Validation\ValidationException;
  * Products with batch tracking also keep stock per batch: receipts go into the
  * given batch, issues pick the earliest expiry first (FEFO) and never sell an
  * expired batch. Cost stays the product's moving average.
+ *
+ * Products with variations keep stock and average cost per variant: pass the
+ * variant to every call. Balances use variant_id 0 for products without variants.
  */
 class StockService
 {
     /** Bring stock in. Recalculates the product's average cost. */
     /** @param array{batch_no?:?string, expiry_date?:?string}|null $batch */
-    public function receive(Product $product, int $warehouseId, float $qty, float $unitCost, string $date, string $type, Model $source, ?string $reason = null, ?array $batch = null): void
+    public function receive(Product $product, int $warehouseId, float $qty, float $unitCost, string $date, string $type, Model $source, ?string $reason = null, ?array $batch = null, ?ProductVariant $variant = null): void
     {
         if ($qty <= 0 || ! $product->track_stock) {
             return;
         }
 
         $product = $this->lockProduct($product);
-        $onHand = $this->totalOnHand($product->id);
+        $variant = $this->checkVariant($product, $variant);
+        $holder = $variant ?? $product;
+        $onHand = $this->totalOnHand($product->id, $variant?->id);
 
         // Moving weighted average. If stock was zero/negative, the new cost wins.
-        $product->avg_cost = $onHand > 0
-            ? round((($onHand * (float) $product->avg_cost) + ($qty * $unitCost)) / ($onHand + $qty), 4)
+        $holder->avg_cost = $onHand > 0
+            ? round((($onHand * (float) $holder->avg_cost) + ($qty * $unitCost)) / ($onHand + $qty), 4)
             : round($unitCost, 4);
-        $product->saveQuietly();
+        $holder->saveQuietly();
 
         $batchId = $product->track_batches ? $this->batch($product, $batch['batch_no'] ?? null, $batch['expiry_date'] ?? null)->id : null;
-        $this->move($product, $warehouseId, $qty, $unitCost, $date, $type, $source, $reason, $batchId);
+        $this->move($product, $warehouseId, $qty, $unitCost, $date, $type, $source, $reason, $batchId, $variant);
+        $this->refreshProductCost($product, $variant);
     }
 
     /**
      * Take stock out at the current average cost (or a given cost for purchase returns).
      * Returns the unit cost used.
      */
-    public function issue(Product $product, int $warehouseId, float $qty, string $date, string $type, Model $source, ?float $unitCost = null, ?string $reason = null, ?string $batchNo = null): float
+    public function issue(Product $product, int $warehouseId, float $qty, string $date, string $type, Model $source, ?float $unitCost = null, ?string $reason = null, ?string $batchNo = null, ?ProductVariant $variant = null): float
     {
         if ($qty <= 0 || ! $product->track_stock) {
             return 0.0;
         }
 
         $product = $this->lockProduct($product);
-        $balance = $this->lockBalance($product->id, $warehouseId);
+        $variant = $this->checkVariant($product, $variant);
+        $holder = $variant ?? $product;
+        $balance = $this->lockBalance($product->id, $warehouseId, $variant?->id);
 
         if (! Tenant::business()->feature('allow_negative_stock') && (float) $balance->quantity + 0.00001 < $qty) {
             throw ValidationException::withMessages([
                 'items' => sprintf('Not enough stock for "%s": %s available, %s required.',
-                    $product->name, $this->fmt((float) $balance->quantity), $this->fmt($qty)),
+                    $this->label($product, $variant), $this->fmt((float) $balance->quantity), $this->fmt($qty)),
             ]);
         }
 
-        $cost = $unitCost ?? (float) $product->avg_cost;
+        $cost = $unitCost ?? (float) $holder->avg_cost;
 
         // Issuing at a cost other than average (purchase return) shifts the average of what remains.
         if ($unitCost !== null) {
-            $onHand = $this->totalOnHand($product->id);
+            $onHand = $this->totalOnHand($product->id, $variant?->id);
             $remaining = $onHand - $qty;
             if ($remaining > 0) {
-                $product->avg_cost = max(0, round((($onHand * (float) $product->avg_cost) - ($qty * $unitCost)) / $remaining, 4));
-                $product->saveQuietly();
+                $holder->avg_cost = max(0, round((($onHand * (float) $holder->avg_cost) - ($qty * $unitCost)) / $remaining, 4));
+                $holder->saveQuietly();
             }
         }
 
         foreach ($this->allocate($product, $warehouseId, $qty, $type, $batchNo) as [$batchId, $part]) {
-            $this->move($product, $warehouseId, -$part, $cost, $date, $type, $source, $reason, $batchId);
+            $this->move($product, $warehouseId, -$part, $cost, $date, $type, $source, $reason, $batchId, $variant);
         }
+        $this->refreshProductCost($product, $variant);
 
         return $cost;
     }
 
     /** Move stock between warehouses; cost is unchanged and batches travel with the goods. */
-    public function transfer(Product $product, int $fromId, int $toId, float $qty, string $date, Model $source): void
+    public function transfer(Product $product, int $fromId, int $toId, float $qty, string $date, Model $source, ?ProductVariant $variant = null): void
     {
         $product = $this->lockProduct($product);
-        $balance = $this->lockBalance($product->id, $fromId);
+        $variant = $this->checkVariant($product, $variant);
+        $cost = (float) ($variant ?? $product)->avg_cost;
+        $balance = $this->lockBalance($product->id, $fromId, $variant?->id);
         if (! Tenant::business()->feature('allow_negative_stock') && (float) $balance->quantity + 0.00001 < $qty) {
             throw ValidationException::withMessages(['items' => sprintf('Not enough stock for "%s": %s available, %s required.',
-                $product->name, $this->fmt((float) $balance->quantity), $this->fmt($qty))]);
+                $this->label($product, $variant), $this->fmt((float) $balance->quantity), $this->fmt($qty))]);
         }
         foreach ($this->allocate($product, $fromId, $qty, 'transfer_out', null) as [$batchId, $part]) {
-            $this->move($product, $fromId, -$part, (float) $product->avg_cost, $date, 'transfer_out', $source, null, $batchId);
-            $this->move($product, $toId, $part, (float) $product->avg_cost, $date, 'transfer_in', $source, null, $batchId);
+            $this->move($product, $fromId, -$part, $cost, $date, 'transfer_out', $source, null, $batchId, $variant);
+            $this->move($product, $toId, $part, $cost, $date, 'transfer_in', $source, null, $batchId, $variant);
         }
     }
 
@@ -174,19 +186,21 @@ class StockService
 
         foreach ($movements as $m) {
             $product = $this->lockProduct(Product::findOrFail($m->product_id));
+            $variant = $m->variant_id ? ProductVariant::whereKey($m->variant_id)->lockForUpdate()->firstOrFail() : null;
+            $holder = $variant ?? $product;
             $qty = (float) $m->quantity;
             $cost = (float) $m->unit_cost;
 
             if (! in_array($m->type, ['transfer_in', 'transfer_out'], true)) {
-                $onHand = $this->totalOnHand($product->id);
+                $onHand = $this->totalOnHand($product->id, $variant?->id);
                 $after = $onHand - $qty;
                 if ($after > 0) {
-                    $product->avg_cost = max(0, round((($onHand * (float) $product->avg_cost) - ($qty * $cost)) / $after, 4));
-                    $product->saveQuietly();
+                    $holder->avg_cost = max(0, round((($onHand * (float) $holder->avg_cost) - ($qty * $cost)) / $after, 4));
+                    $holder->saveQuietly();
                 }
             }
 
-            $balance = $this->lockBalance($m->product_id, $m->warehouse_id);
+            $balance = $this->lockBalance($m->product_id, $m->warehouse_id, $m->variant_id);
             $balance->quantity = (float) $balance->quantity - $qty;
             $balance->save();
             if ($m->batch_id) {
@@ -194,12 +208,13 @@ class StockService
             }
 
             $m->delete();
+            $this->refreshProductCost($product, $variant);
         }
     }
 
-    public function onHand(int $productId, ?int $warehouseId = null): float
+    public function onHand(int $productId, ?int $warehouseId = null, ?int $variantId = null): float
     {
-        $q = StockBalance::where('product_id', $productId);
+        $q = StockBalance::where('product_id', $productId)->when($variantId, fn ($w) => $w->where('variant_id', $variantId));
         if ($warehouseId) {
             $q->where('warehouse_id', $warehouseId);
         }
@@ -207,9 +222,9 @@ class StockService
         return (float) $q->sum('quantity');
     }
 
-    private function move(Product $product, int $warehouseId, float $qty, float $unitCost, string $date, string $type, Model $source, ?string $reason, ?int $batchId = null): void
+    private function move(Product $product, int $warehouseId, float $qty, float $unitCost, string $date, string $type, Model $source, ?string $reason, ?int $batchId = null, ?ProductVariant $variant = null): void
     {
-        $balance = $this->lockBalance($product->id, $warehouseId);
+        $balance = $this->lockBalance($product->id, $warehouseId, $variant?->id);
         $balance->quantity = (float) $balance->quantity + $qty;
         $balance->save();
         if ($batchId) {
@@ -218,6 +233,7 @@ class StockService
 
         StockMovement::create([
             'product_id' => $product->id,
+            'variant_id' => $variant?->id,
             'warehouse_id' => $warehouseId,
             'batch_id' => $batchId,
             'date' => $date,
@@ -243,16 +259,48 @@ class StockService
         return Product::whereKey($product->id)->lockForUpdate()->firstOrFail();
     }
 
-    private function lockBalance(int $productId, int $warehouseId): StockBalance
+    private function lockBalance(int $productId, int $warehouseId, ?int $variantId = null): StockBalance
     {
-        $balance = StockBalance::where('product_id', $productId)->where('warehouse_id', $warehouseId)->lockForUpdate()->first();
+        $variantId = (int) $variantId;
+        $balance = StockBalance::where('product_id', $productId)->where('variant_id', $variantId)->where('warehouse_id', $warehouseId)->lockForUpdate()->first();
 
-        return $balance ?? StockBalance::create(['product_id' => $productId, 'warehouse_id' => $warehouseId, 'quantity' => 0]);
+        return $balance ?? StockBalance::create(['product_id' => $productId, 'variant_id' => $variantId, 'warehouse_id' => $warehouseId, 'quantity' => 0]);
     }
 
-    private function totalOnHand(int $productId): float
+    private function totalOnHand(int $productId, ?int $variantId = null): float
     {
-        return (float) StockBalance::where('product_id', $productId)->sum('quantity');
+        return (float) StockBalance::where('product_id', $productId)->where('variant_id', (int) $variantId)->sum('quantity');
+    }
+
+    /** A product with variations needs one of its own variants; other products take none. */
+    private function checkVariant(Product $product, ?ProductVariant $variant): ?ProductVariant
+    {
+        if (! $product->has_variants) {
+            return null;
+        }
+        if (! $variant || (int) $variant->product_id !== (int) $product->id) {
+            throw ValidationException::withMessages(['items' => __('Choose a variation (size, colour…) for ":name".', ['name' => $product->name])]);
+        }
+
+        return ProductVariant::whereKey($variant->id)->lockForUpdate()->firstOrFail()->setRelation('product', $product);
+    }
+
+    /** For products with variations the product's own average cost is the stock-weighted average of its variants (for display). */
+    private function refreshProductCost(Product $product, ?ProductVariant $variant): void
+    {
+        if (! $variant) {
+            return;
+        }
+        $row = StockBalance::query()->join('product_variants', 'product_variants.id', '=', 'stock_balances.variant_id')
+            ->where('stock_balances.product_id', $product->id)->where('stock_balances.quantity', '>', 0)
+            ->selectRaw('SUM(stock_balances.quantity) AS qty, SUM(stock_balances.quantity * product_variants.avg_cost) AS value')->first();
+        $product->avg_cost = (float) $row?->qty > 0 ? round((float) $row->value / (float) $row->qty, 4) : (float) $variant->avg_cost;
+        $product->saveQuietly();
+    }
+
+    private function label(Product $product, ?ProductVariant $variant): string
+    {
+        return $variant ? $product->name.' — '.$variant->name : $product->name;
     }
 
     private function fmt(float $n): string

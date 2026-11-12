@@ -40,10 +40,9 @@ class PosController extends Controller
             'walkIn' => Party::where('is_walk_in', true)->first(),
             'categories' => Category::whereHas('products', fn ($q) => $q->where('is_active', true))->orderBy('name')->get(['id', 'name']),
             // Quick-pick grid: the products sold most in the last 30 days, then the rest by name.
-            'quick' => Product::with(['unit', 'units.unit', 'taxRate'])->where('is_active', true)
-                ->withSum(['balances as stock' => fn ($q) => $q->where('warehouse_id', $warehouse?->id)], 'quantity')
+            'quick' => $this->rows(Product::with(['unit', 'units.unit', 'taxRate', 'prices'])->where('is_active', true)
                 ->withCount(['movements as sold' => fn ($q) => $q->where('type', 'sale')->whereDate('date', '>=', now()->subDays(30)->toDateString())])
-                ->orderByDesc('sold')->orderBy('name')->limit(48)->get(),
+                ->orderByDesc('sold')->orderBy('name')->limit(48)->get(), $warehouse?->id)->take(60)->values(),
             'accounts' => Account::cashOrBank()->orderByRaw("CASE WHEN subtype = 'cash' THEN 0 ELSE 1 END")->orderBy('code')->get(['id', 'name', 'subtype']),
         ]);
     }
@@ -61,6 +60,7 @@ class PosController extends Controller
             'notes' => ['nullable', 'string', 'max:500'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', $this->owned('products')],
+            'items.*.variant_id' => ['nullable', $this->owned('product_variants')],
             'items.*.unit_id' => ['required', $this->owned('units')],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.price' => ['required', 'numeric', 'min:0'],
@@ -125,19 +125,44 @@ class PosController extends Controller
         $walkInLevel = Party::where('is_walk_in', true)->value('price_level_id');
 
         $products = Product::with(['unit', 'units.unit', 'prices', 'taxRate'])->where('is_active', true)
-            ->withSum(['balances as stock' => fn ($q) => $q->when($warehouseId, fn ($w) => $w->where('warehouse_id', $warehouseId))], 'quantity')
             ->orderBy('name')->limit(10000)->get();
 
         return response()->json([
             'generated_at' => now()->toIso8601String(),
-            'products' => $products->map(fn (Product $p) => [
-                'id' => $p->id, 'name' => $p->name, 'sku' => $p->sku, 'barcode' => $p->barcode, 'category_id' => $p->category_id,
-                'base_unit_id' => $p->unit_id, 'unit_id' => $p->unit_id, 'units' => $p->unitOptions(),
-                'sale_price' => $p->priceFor($walkInLevel), 'avg_cost' => (float) $p->avg_cost,
-                'tax_rate' => (float) ($p->taxRate?->rate ?? 0), 'stock' => $p->track_stock ? (float) ($p->stock ?? 0) : null,
-                'track_batches' => (bool) $p->track_batches,
-            ])->values(),
+            'products' => $this->rows($products, $warehouseId, $walkInLevel)->values(),
         ]);
+    }
+
+    /**
+     * POS rows: one per product, or one per active variation for products with
+     * variations. Each has its own SKU, barcode, walk-in price and stock.
+     */
+    private function rows($products, ?int $warehouseId, ?int $level = null)
+    {
+        $level ??= Party::where('is_walk_in', true)->value('price_level_id');
+        $products->loadMissing(['variants' => fn ($v) => $v->where('is_active', true)]);
+        $stock = \App\Models\StockBalance::whereIn('product_id', $products->pluck('id'))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->selectRaw('product_id, variant_id, SUM(quantity) as qty')->groupBy('product_id', 'variant_id')->get()
+            ->mapWithKeys(fn ($r) => [$r->product_id.'-'.$r->variant_id => (float) $r->qty]);
+
+        return $products->flatMap(fn (Product $p) => collect($p->has_variants ? $p->variants->all() : [null])->map(function ($v) use ($p, $level, $stock) {
+            $units = $p->unitOptions();
+            if ($v) {
+                $units[0]['barcode'] = $v->barcode;
+                $v->setRelation('product', $p);
+            }
+
+            return [
+                'id' => $v ? $p->id.'-'.$v->id : $p->id, 'product_id' => $p->id, 'variant_id' => $v?->id,
+                'name' => $v ? $p->name.' — '.$v->name : $p->name, 'sku' => $v ? $v->sku : $p->sku, 'barcode' => $v ? $v->barcode : $p->barcode,
+                'category_id' => $p->category_id, 'base_unit_id' => $p->unit_id, 'unit_id' => $p->unit_id, 'units' => $units,
+                'sale_price' => $p->priceFor($level, null, $v), 'avg_cost' => (float) ($v ?? $p)->avg_cost,
+                'tax_rate' => (float) ($p->taxRate?->rate ?? 0), 'stock' => $p->track_stock ? (float) ($stock[$p->id.'-'.($v?->id ?? 0)] ?? 0) : null,
+                'track_batches' => (bool) $p->track_batches,
+                'image' => $p->image_path ? asset('storage/'.$p->image_path) : null,
+            ];
+        }));
     }
 
     /** The cashier's recent bills, for reprint or return. */

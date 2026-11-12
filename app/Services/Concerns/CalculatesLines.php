@@ -3,6 +3,7 @@
 namespace App\Services\Concerns;
 
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Support\Tenant;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -20,9 +21,11 @@ trait CalculatesLines
         $taxOn = $business->feature('tax');
         $inclusive = $business->feature('prices_include_tax');
         $products = Product::with('units', 'unit', 'taxRate')->whereIn('id', array_column($items, 'product_id'))->get()->keyBy('id');
+        $variants = ProductVariant::whereIn('id', array_filter(array_column($items, 'variant_id')))->get()->keyBy('id');
 
-        $lines = collect(array_values($items))->map(function ($item, $i) use ($products, $taxOn, $inclusive) {
+        $lines = collect(array_values($items))->map(function ($item, $i) use ($products, $variants, $taxOn, $inclusive) {
             $product = $products->get($item['product_id']) ?? throw ValidationException::withMessages(["items.$i.product_id" => __('Invalid product.')]);
+            $variant = $this->variantFor($product, $variants->get((int) ($item['variant_id'] ?? 0)), $i);
             $factor = $this->factorFor($product, (int) $item['unit_id'], $i);
 
             $qty = round((float) $item['quantity'], 4);
@@ -38,6 +41,8 @@ trait CalculatesLines
             return [
                 'product' => $product,
                 'product_id' => $product->id,
+                'variant' => $variant,
+                'variant_id' => $variant?->id,
                 'unit_id' => (int) $item['unit_id'],
                 'factor' => $factor,
                 'quantity' => $qty,
@@ -57,6 +62,25 @@ trait CalculatesLines
         }
 
         return $lines;
+    }
+
+    /** Products with variations need one of their own variants on every line. */
+    protected function variantFor(Product $product, ?ProductVariant $variant, int $i): ?ProductVariant
+    {
+        if (! $product->has_variants) {
+            return null;
+        }
+        if (! $variant || (int) $variant->product_id !== (int) $product->id) {
+            throw ValidationException::withMessages(["items.$i.variant_id" => __('Choose a variation (size, colour…) for ":name".', ['name' => $product->name])]);
+        }
+
+        return $variant->setRelation('product', $product);
+    }
+
+    /** Line label for messages: product name, plus the variation when there is one. */
+    protected function lineName(array $line): string
+    {
+        return $line['variant'] ? $line['product']->name.' — '.$line['variant']->name : $line['product']->name;
     }
 
     protected function factorFor(Product $product, int $unitId, int $i): float

@@ -25,9 +25,11 @@ class CatalogController extends Controller
         $this->allow('products.view');
         $warehouseId = $request->integer('warehouse_id') ?: null;
 
-        $products = Product::with(['unit', 'units.unit', 'prices', 'taxRate', 'category'])
+        $products = Product::with(['unit', 'units.unit', 'prices', 'taxRate', 'category',
+            'variants' => fn ($v) => $v->where('is_active', true)->with(['balances' => fn ($b) => $b->when($warehouseId, fn ($w) => $w->where('warehouse_id', $warehouseId))])])
             ->where('is_active', true)
-            ->when($request->query('barcode'), fn ($q, $code) => $q->where(fn ($w) => $w->where('barcode', $code)->orWhere('sku', $code)->orWhereHas('units', fn ($u) => $u->where('barcode', $code))),
+            ->when($request->query('barcode'), fn ($q, $code) => $q->where(fn ($w) => $w->where('barcode', $code)->orWhere('sku', $code)->orWhereHas('units', fn ($u) => $u->where('barcode', $code))
+                ->orWhereHas('variants', fn ($v) => $v->where('barcode', $code)->orWhere('sku', $code))),
                 fn ($q) => $q->search($request->query('q')))
             ->when($request->integer('category_id'), fn ($q, $c) => $q->where('category_id', $c))
             ->when($request->query('updated_since'), fn ($q, $d) => $q->where('updated_at', '>=', $d))
@@ -47,12 +49,12 @@ class CatalogController extends Controller
     public function product(Product $product, StockService $stock): JsonResponse
     {
         $this->allow('products.view');
-        $product->load(['unit', 'units.unit', 'prices', 'taxRate', 'category']);
+        $product->load(['unit', 'units.unit', 'prices', 'taxRate', 'category', 'variants.balances']);
 
         return response()->json([
             'data' => (new ProductResource($product))->resolve(),
-            'stock' => StockBalance::where('product_id', $product->id)->get(['warehouse_id', 'quantity'])
-                ->map(fn ($s) => ['warehouse_id' => $s->warehouse_id, 'quantity' => (float) $s->quantity]),
+            'stock' => StockBalance::where('product_id', $product->id)->get(['warehouse_id', 'variant_id', 'quantity'])
+                ->map(fn ($s) => ['warehouse_id' => $s->warehouse_id, 'variant_id' => $s->variant_id ?: null, 'quantity' => (float) $s->quantity]),
             'batches' => $product->track_batches ? $stock->batchStock($product->id)->map(fn ($b) => [
                 'batch_no' => $b->batch_no, 'expiry_date' => $b->expiry_date ? substr((string) $b->expiry_date, 0, 10) : null,
                 'warehouse_id' => $b->warehouse_id, 'quantity' => (float) $b->quantity,

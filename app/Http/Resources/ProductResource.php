@@ -29,6 +29,14 @@ class ProductResource extends JsonResource
             'reorder_level' => (float) $this->reorder_level,
             'track_stock' => $this->track_stock,
             'track_batches' => $this->track_batches,
+            'has_variants' => (bool) $this->has_variants,
+            // Each variation is sold on its own: send variant_id with the line.
+            'variants' => $this->whenLoaded('variants', fn () => $this->variants->map(fn ($v) => [
+                'id' => $v->id, 'name' => $v->name, 'sku' => $v->sku, 'barcode' => $v->barcode,
+                'sale_price' => (float) ($v->sale_price ?? $this->sale_price),
+                'purchase_price' => $this->when($request->user()?->can('purchases.view'), (float) ($v->purchase_price ?? $this->purchase_price)),
+                'stock' => $v->relationLoaded('balances') ? (float) $v->balances->sum('quantity') : null,
+            ])->values()),
             'image_url' => $this->image_path ? asset('storage/'.$this->image_path) : null,
             'is_active' => $this->is_active,
             'updated_at' => $this->updated_at?->toIso8601String(),

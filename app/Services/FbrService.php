@@ -137,7 +137,7 @@ class FbrService
             'InvoiceType' => $type,
             'Items' => $invoice->items->map(fn ($i) => [
                 'ItemCode' => $i->product->sku ?: (string) $i->product_id,
-                'ItemName' => $i->product->name,
+                'ItemName' => $i->itemName(),
                 'Quantity' => (float) $i->quantity,
                 'PCTCode' => (string) $i->product->hs_code,
                 'TaxRate' => (float) $i->tax_rate,
@@ -173,7 +173,7 @@ class FbrService
             'invoiceRefNo' => $invoice->number,
             'items' => $invoice->items->map(fn ($i) => [
                 'hsCode' => (string) $i->product->hs_code,
-                'productDescription' => $i->product->name,
+                'productDescription' => $i->itemName(),
                 'rate' => rtrim(rtrim(number_format((float) $i->tax_rate, 3, '.', ''), '0'), '.').'%',
                 'uoM' => self::UOM[$i->product->unit?->short_name ?? $i->unit->short_name] ?? 'Numbers, pieces, units',
                 'quantity' => (float) $i->base_quantity,

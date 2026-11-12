@@ -146,6 +146,7 @@ class DocumentController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', $this->owned('products')],
+            'items.*.variant_id' => ['nullable', $this->owned('product_variants')],
             'items.*.unit_id' => ['required', $this->owned('units')],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.price' => ['required', 'numeric', 'min:0'],

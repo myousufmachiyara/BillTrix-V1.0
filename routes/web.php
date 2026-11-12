@@ -88,6 +88,12 @@ Route::middleware(['auth', 'tenant'])->group(function () {
 
     // Inventory
     Route::get('products/lookup', [ProductController::class, 'lookup'])->name('products.lookup');
+    Route::get('labels', [\App\Http\Controllers\Inventory\LabelController::class, 'index'])->name('labels.index');
+    Route::post('labels/print', [\App\Http\Controllers\Inventory\LabelController::class, 'print'])->name('labels.print');
+    Route::middleware('feature:variants')->group(function () {
+        Route::resource('attributes', \App\Http\Controllers\Inventory\AttributeController::class)->only(['index', 'store', 'update', 'destroy'])
+            ->parameters(['attributes' => 'attribute']);
+    });
     Route::resource('products', ProductController::class);
     Route::resource('stock-adjustments', StockAdjustmentController::class)->only(['index', 'create', 'store', 'show', 'destroy']);
     Route::resource('stock-transfers', StockTransferController::class)->only(['index', 'create', 'store', 'show', 'destroy'])

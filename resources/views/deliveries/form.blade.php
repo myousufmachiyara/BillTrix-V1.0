@@ -32,7 +32,7 @@
             <tbody>
             @foreach ($rows as $i => $r)
                 <tr>
-                    <td><input type="hidden" name="items[{{ $i }}][product_id]" value="{{ $r['product_id'] }}"><input type="hidden" name="items[{{ $i }}][order_item_id]" value="{{ $r['order_item_id'] }}">{{ $r['name'] }}</td>
+                    <td><input type="hidden" name="items[{{ $i }}][product_id]" value="{{ $r['product_id'] }}">@if (! empty($r['variant_id']))<input type="hidden" name="items[{{ $i }}][variant_id]" value="{{ $r['variant_id'] }}">@endif<input type="hidden" name="items[{{ $i }}][order_item_id]" value="{{ $r['order_item_id'] }}">{{ $r['name'] }}</td>
                     @if ($order)<td class="num">{{ $r['ordered'] }}</td><td class="num">{{ $r['pending'] !== null ? qty($r['pending']) : '' }}</td>@endif
                     <td>
                         @if ($r['order_item_id'])
@@ -63,7 +63,7 @@
         $p.on('select2:select', function (e) {
             const d = e.params.data, i = n++;
             const units = d.units.map(u => `<option value="${u.unit_id}">${BT.esc(u.name)}</option>`).join('');
-            $('#dc-lines tbody').append(`<tr><td><input type="hidden" name="items[${i}][product_id]" value="${d.id}">${BT.esc(d.name)} <span class="badge bg-light text-dark">${BT.qty(d.stock || 0)} in stock</span></td>
+            $('#dc-lines tbody').append(`<tr><td><input type="hidden" name="items[${i}][product_id]" value="${d.product_id || d.id}">${d.variant_id ? `<input type="hidden" name="items[${i}][variant_id]" value="${d.variant_id}">` : ''}${BT.esc(d.name)} <span class="badge bg-light text-dark">${BT.qty(d.stock || 0)} in stock</span></td>
                 <td><select name="items[${i}][unit_id]" class="form-select form-select-sm">${units}</select></td>
                 <td><input type="number" step="any" min="0" name="items[${i}][quantity]" class="form-control form-control-sm text-end" required></td>
                 <td><button type="button" class="btn btn-link text-danger p-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td></tr>`);

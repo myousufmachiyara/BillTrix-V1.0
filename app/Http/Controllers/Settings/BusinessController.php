@@ -32,6 +32,7 @@ class BusinessController extends Controller
         'customer_prices' => ['Customer-specific prices', 'Agree a special rate per product with a customer.'],
         'wht' => ['Withholding tax', 'Collect income tax on sales and deduct it on purchases at filer / non-filer rates.'],
         'batches' => ['Batches & expiry', 'Track batch numbers and expiry dates for selected products (FEFO picking).'],
+        'variants' => ['Product variations', 'Sizes, colours and other options per product, each with its own SKU, barcode, price and stock.'],
     ];
 
     public function edit(): View

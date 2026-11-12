@@ -64,7 +64,7 @@
                     @foreach ($invoice->items as $item)
                         <tr>
                             <td>{{ $loop->iteration }}</td>
-                            <td>{{ $item->product->name }}</td>
+                            <td>{{ $item->itemName() }}</td>
                             <td class="num">{{ qty($item->quantity) }} {{ $item->unit->short_name }}</td>
                             <td class="num">{{ money($item->price) }}</td>
                             <td class="num">{{ (float) $item->discount_percent ? qty($item->discount_percent).'%' : '' }}</td>

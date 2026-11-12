@@ -16,11 +16,16 @@ class StockMovement extends Model
         'sale_return' => 'Sale Return', 'adjustment' => 'Adjustment', 'transfer_in' => 'Transfer In', 'transfer_out' => 'Transfer Out', 'delivery' => 'Delivery Challan',
     ];
 
-    protected $fillable = ['product_id', 'warehouse_id', 'batch_id', 'date', 'type', 'quantity', 'unit_cost', 'source_type', 'source_id', 'reason'];
+    protected $fillable = ['product_id', 'variant_id', 'warehouse_id', 'batch_id', 'date', 'type', 'quantity', 'unit_cost', 'source_type', 'source_id', 'reason'];
 
     protected function casts(): array
     {
         return ['date' => 'date', 'quantity' => 'decimal:4', 'unit_cost' => 'decimal:4'];
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function product(): BelongsTo

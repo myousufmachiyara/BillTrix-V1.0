@@ -2,18 +2,26 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasVariantName;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StockAdjustmentItem extends Model
 {
+    use HasVariantName;
+
     public $timestamps = false;
 
-    protected $fillable = ['stock_adjustment_id', 'product_id', 'system_quantity', 'quantity', 'unit_cost', 'batch_no', 'expiry_date'];
+    protected $fillable = ['stock_adjustment_id', 'product_id', 'variant_id', 'system_quantity', 'quantity', 'unit_cost', 'batch_no', 'expiry_date'];
 
     protected function casts(): array
     {
         return ['system_quantity' => 'decimal:4', 'quantity' => 'decimal:4', 'unit_cost' => 'decimal:4'];
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function product(): BelongsTo

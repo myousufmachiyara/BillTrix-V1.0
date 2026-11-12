@@ -73,7 +73,7 @@
         @foreach ($invoice->items as $item)
             <tr>
                 <td>{{ $loop->iteration }}</td>
-                <td>{{ $item->product->name }}</td>
+                <td>{{ $item->itemName() }}</td>
                 <td class="r">{{ qty($item->quantity) }} {{ $item->unit->short_name }}</td>
                 <td class="r">{{ money($item->price) }}</td>
                 @if ($showDisc)<td class="r">{{ (float) $item->discount_percent ? qty($item->discount_percent) : '' }}</td>@endif

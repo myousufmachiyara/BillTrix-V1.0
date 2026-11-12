@@ -38,7 +38,8 @@ class DocumentResource extends JsonResource
             'items' => $this->whenLoaded('items', fn () => $this->items->map(fn ($i) => [
                 'id' => $i->id,
                 'product_id' => $i->product_id,
-                'name' => $i->relationLoaded('product') ? $i->product->name : null,
+                'name' => $i->relationLoaded('product') ? $i->itemName() : null,
+                'variant_id' => $i->variant_id,
                 'unit_id' => $i->unit_id,
                 'quantity' => (float) $i->quantity,
                 'price' => (float) $i->price,

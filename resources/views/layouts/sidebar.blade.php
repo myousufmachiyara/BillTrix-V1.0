@@ -69,10 +69,14 @@
                     @endcanany
 
                     @canany(['products.view', 'stock.view'])
-                    <li class="nav-parent {{ $open('products.*', 'stock-adjustments.*', 'stock-transfers.*') }} {{ in_array(request()->route('master'), ['units', 'categories']) ? 'nav-expanded nav-active' : '' }}">
+                    <li class="nav-parent {{ $open('products.*', 'stock-adjustments.*', 'stock-transfers.*', 'attributes.*', 'labels.*') }} {{ in_array(request()->route('master'), ['units', 'categories']) ? 'nav-expanded nav-active' : '' }}">
                         <a class="nav-link" href="#"><i class="fas fa-boxes"></i><span>{{ __('Inventory') }}</span></a>
                         <ul class="nav nav-children">
                             @can('products.view')<li class="{{ $is('products.*') }}"><a class="nav-link" href="{{ route('products.index') }}">{{ __('Products') }}</a></li>@endcan
+                            @feature('variants')
+                                @can('products.view')<li class="{{ $is('attributes.*') }}"><a class="nav-link" href="{{ route('attributes.index') }}">{{ __('Attributes') }}</a></li>@endcan
+                            @endfeature
+                            @can('products.labels')<li class="{{ $is('labels.*') }}"><a class="nav-link" href="{{ route('labels.index') }}">{{ __('Barcode Labels') }}</a></li>@endcan
                             @can('products.edit')
                                 <li><a class="nav-link" href="{{ route('masters.index', 'categories') }}">{{ __('Categories') }}</a></li>
                                 <li><a class="nav-link" href="{{ route('masters.index', 'units') }}">{{ __('Units') }}</a></li>

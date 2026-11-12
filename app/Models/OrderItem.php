@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasVariantName;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrderItem extends Model
 {
+    use HasVariantName;
+
     public $timestamps = false;
 
-    protected $fillable = ['order_id', 'product_id', 'unit_id', 'factor', 'quantity', 'base_quantity', 'fulfilled_quantity', 'price',
+    protected $fillable = ['order_id', 'product_id', 'variant_id', 'unit_id', 'factor', 'quantity', 'base_quantity', 'fulfilled_quantity', 'price',
         'discount_percent', 'discount_amount', 'tax_rate', 'tax_amount', 'amount'];
 
     protected function casts(): array
@@ -24,6 +27,11 @@ class OrderItem extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function product(): BelongsTo

@@ -40,7 +40,7 @@ Send `Authorization: Bearer <token>` on every other call. The user's role needs 
 
 ## Documents
 
-Line items always use: `product_id`, `unit_id`, `quantity`, `price`, optional `discount_percent`, `tax_rate`.
+Line items always use: `product_id`, `unit_id`, `quantity`, `price`, optional `discount_percent`, `tax_rate`. For a product with variations (`has_variants: true`) also send `variant_id` — one of the product's `variants[].id`; stock and cost are kept per variation. Scanning a variation's barcode with `GET /products?barcode=` returns its product.
 
 | Method | Path | Notes |
 |---|---|---|

@@ -51,6 +51,7 @@ class DeliveryService
             }
 
             $products = Product::with('units')->whereIn('id', $items->pluck('product_id'))->get()->keyBy('id');
+            $variants = \App\Models\ProductVariant::whereIn('id', $items->pluck('variant_id')->filter())->get()->keyBy('id');
             $orderItems = OrderItem::whereIn('id', $items->pluck('order_item_id')->filter())->get()->keyBy('id');
             $pending = $this->orders->pendingBase($orderItems->keys()->all());
 
@@ -70,6 +71,10 @@ class DeliveryService
             $cost = 0.0;
             foreach ($items as $i => $item) {
                 $product = $products[$item['product_id']] ?? throw ValidationException::withMessages(["items.$i.product_id" => __('Invalid product.')]);
+                $variant = $product->has_variants ? $variants->get((int) ($item['variant_id'] ?? 0)) : null;
+                if ($product->has_variants && (! $variant || (int) $variant->product_id !== $product->id)) {
+                    throw ValidationException::withMessages(["items.$i.variant_id" => __('Choose a variation (size, colour…) for ":name".', ['name' => $product->name])]);
+                }
                 $unitId = (int) $item['unit_id'];
                 $factor = $unitId === $product->unit_id ? 1.0
                     : (float) ($product->units->firstWhere('unit_id', $unitId)?->factor ?? throw ValidationException::withMessages(["items.$i.unit_id" => "Unit not set up for \"{$product->name}\"."]));
@@ -79,7 +84,7 @@ class DeliveryService
                 $orderItemId = ($item['order_item_id'] ?? null) ?: null;
                 if ($orderItemId) {
                     $oi = $orderItems->get($orderItemId);
-                    if (! $oi || $oi->order_id !== $order?->id || $oi->product_id !== $product->id) {
+                    if (! $oi || $oi->order_id !== $order?->id || $oi->product_id !== $product->id || $oi->variant_id !== $variant?->id) {
                         throw ValidationException::withMessages(["items.$i.product_id" => "\"{$product->name}\" is not on the selected order."]);
                     }
                     if ($base > ($pending[$oi->id] ?? 0) + 0.00001) {
@@ -88,9 +93,9 @@ class DeliveryService
                     $pending[$oi->id] -= $base;
                 }
 
-                $unitCost = $this->stock->issue($product, $warehouse->id, $base, $delivery->date->toDateString(), 'delivery', $delivery);
+                $unitCost = $this->stock->issue($product, $warehouse->id, $base, $delivery->date->toDateString(), 'delivery', $delivery, variant: $variant);
                 $delivery->items()->create([
-                    'order_item_id' => $orderItemId, 'product_id' => $product->id, 'unit_id' => $unitId, 'factor' => $factor,
+                    'order_item_id' => $orderItemId, 'product_id' => $product->id, 'variant_id' => $variant?->id, 'unit_id' => $unitId, 'factor' => $factor,
                     'quantity' => $qty, 'base_quantity' => $base, 'unit_cost' => $unitCost,
                 ]);
                 $cost += $unitCost * $base;

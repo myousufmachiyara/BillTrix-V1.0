@@ -45,7 +45,7 @@
 
             return `<tr data-avg="${l.avg_cost || 0}" data-base-sale="${l.base_sale ?? ''}" data-base-purchase="${l.base_purchase ?? ''}">
                 <td class="col-product">
-                    <input type="hidden" data-f="product_id" value="${l.product_id}">
+                    <input type="hidden" data-f="product_id" value="${l.product_id}">${l.variant_id ? `<input type="hidden" data-f="variant_id" value="${l.variant_id}">` : ''}
                     <input type="hidden" data-f="source_item_id" value="${l.source_item_id ?? ''}">${hidden}
                     <div class="fw-semibold">${BT.esc(l.name)}</div>${note}${stock}${batchFields}<div class="row-msg small text-warning"></div>
                 </td>
@@ -68,8 +68,11 @@
         function addProduct(p, qty) {
             // Same product and unit already on the bill → just add quantity (scanner friendly).
             const unitId = p.unit_id || p.base_unit_id;
+            const productId = p.product_id || p.id;
+            const variantId = p.variant_id || '';
             const $existing = $tbody.find('tr').filter(function () {
-                return +$(this).find('[data-f=product_id]').val() === +p.id && +$(this).find('[data-f=unit_id]').val() === +unitId;
+                return +$(this).find('[data-f=product_id]').val() === +productId && String($(this).find('[data-f=variant_id]').val() || '') === String(variantId)
+                    && +$(this).find('[data-f=unit_id]').val() === +unitId;
             }).first();
             if ($existing.length) {
                 const $q = $existing.find('[data-f=quantity]');
@@ -79,7 +82,7 @@
             }
             const unit = (p.units || []).find((u) => +u.unit_id === +unitId) || { factor: 1 };
             const $row = $(rowHtml({
-                product_id: p.id, name: p.name, units: p.units, unit_id: unitId, quantity: qty || 1,
+                product_id: productId, variant_id: p.variant_id || null, name: p.name, units: p.units, unit_id: unitId, quantity: qty || 1,
                 price: priceFor(p, unit), discount_percent: 0, tax_rate: cfg.tax ? p.tax_rate : 0,
                 avg_cost: p.avg_cost, stock: cfg.type === 'sale' || cfg.type === 'purchase_return' ? p.stock : null,
                 base_sale: p.sale_price, base_purchase: p.purchase_price, track_batches: p.track_batches, batches: p.batches || [],

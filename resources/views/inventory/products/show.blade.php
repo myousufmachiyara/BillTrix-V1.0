@@ -47,6 +47,34 @@
                 @if ($stock->count() > 1)<tfoot><tr><td>{{ __('Total') }}</td><td class="num">{{ qty($stock->sum('quantity')) }} {{ $product->unit->short_name }}</td></tr></tfoot>@endif
             </table>
         </x-card>
+        @if ($product->has_variants)
+            @php $whIds = $variants->flatMap->balances->pluck('warehouse_id')->unique()->sort()->values(); @endphp
+            <x-card title="Variations" :body="false">
+                <x-slot:actions>
+                    @can('products.labels')<a href="{{ route('labels.index', ['product_id' => $product->id]) }}" class="btn btn-sm btn-default"><i class="fas fa-barcode"></i> {{ __('Print labels') }}</a>@endcan
+                </x-slot:actions>
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light"><tr><th>{{ __('Variation') }}</th><th>{{ __('SKU') }}</th><th>{{ __('Barcode') }}</th><th class="num">{{ __('Sale price') }}</th>
+                        @can('reports.profit')<th class="num">{{ __('Avg. cost') }}</th>@endcan
+                        @if ($whIds->count() > 1)@foreach ($whIds as $w)<th class="num">{{ $warehouseNames[$w] ?? '' }}</th>@endforeach @endif
+                        <th class="num">{{ __('In stock') }}</th></tr></thead>
+                    <tbody>
+                    @foreach ($variants as $v)
+                        @php $qty = (float) $v->balances->sum('quantity'); $low = $product->track_stock && $qty <= $v->reorderLevel(); @endphp
+                        <tr class="{{ $v->is_active ? '' : 'text-muted' }}">
+                            <td>{{ $v->name }} @unless ($v->is_active)<span class="badge bg-secondary">{{ __('Inactive') }}</span>@endunless</td>
+                            <td>{{ $v->sku }}</td><td>{{ $v->barcode }}</td><td class="num">{{ money($v->salePrice()) }}</td>
+                            @can('reports.profit')<td class="num text-muted">{{ money($v->avg_cost) }}</td>@endcan
+                            @if ($whIds->count() > 1)@foreach ($whIds as $w)<td class="num">{{ qty($v->balances->where('warehouse_id', $w)->sum('quantity')) }}</td>@endforeach @endif
+                            <td class="num fw-semibold {{ $low ? 'text-danger' : '' }}">{{ qty($qty) }} {{ $product->unit->short_name }}</td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+                </div>
+            </x-card>
+        @endif
         @if ($product->track_batches)
             <x-card title="Batches in stock" :body="false">
                 @php $wh = $stock->pluck('warehouse.name', 'warehouse_id'); @endphp
@@ -75,7 +103,7 @@
                     <tr>
                         <td>{{ $m->date->format('d-m-Y') }}</td>
                         <td>{{ __(\App\Models\StockMovement::TYPES[$m->type] ?? $m->type) }} @if ($m->reason)<span class="text-muted small">({{ $m->reason }})</span>@endif</td>
-                        <td>{{ $m->source?->number }}</td><td>{{ $m->warehouse->name }}</td>
+                        <td>{{ $m->source?->number }}@if ($m->variant) <span class="badge bg-light text-dark border">{{ $m->variant->name }}</span>@endif</td><td>{{ $m->warehouse->name }}</td>
                         <td class="num {{ $m->quantity < 0 ? 'text-danger' : 'text-success' }}">{{ qty($m->quantity) }}</td>
                         @can('reports.profit')<td class="num text-muted">{{ money($m->unit_cost) }}</td>@endcan
                     </tr>

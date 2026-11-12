@@ -48,13 +48,14 @@ class StockAdjustmentController extends Controller
             'reason' => [$type === 'adjustment' ? 'required' : 'nullable', Rule::in(array_keys(StockAdjustment::REASONS))],
             'notes' => ['nullable', 'string', 'max:500'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', $this->owned('products'), 'distinct'],
+            'items.*.product_id' => ['required', $this->owned('products')],
+            'items.*.variant_id' => ['nullable', $this->owned('product_variants')],
             'items.*.quantity' => [$type === 'count' ? 'nullable' : 'required', 'numeric', $type === 'opening' ? 'gt:0' : 'not_in:0'],
             'items.*.counted' => [$type === 'count' ? 'required' : 'nullable', 'numeric', 'min:0'],
             'items.*.unit_cost' => ['nullable', 'numeric', 'min:0'],
             'items.*.batch_no' => ['nullable', 'string', 'max:50'],
             'items.*.expiry_date' => ['nullable', 'date'],
-        ], ['items.*.product_id.distinct' => 'Each product can appear only once.']);
+        ]);
 
         $adj = $this->docs->adjust($data);
 

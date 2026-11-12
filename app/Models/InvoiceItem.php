@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasVariantName;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InvoiceItem extends Model
 {
+    use HasVariantName;
+
     public $timestamps = false;
 
-    protected $fillable = ['invoice_id', 'product_id', 'unit_id', 'source_item_id', 'order_item_id', 'delivery_item_id', 'factor', 'quantity', 'base_quantity', 'price',
+    protected $fillable = ['invoice_id', 'product_id', 'variant_id', 'unit_id', 'source_item_id', 'order_item_id', 'delivery_item_id', 'factor', 'quantity', 'base_quantity', 'price',
         'discount_percent', 'discount_amount', 'tax_rate', 'tax_amount', 'amount', 'unit_cost', 'batch_no', 'expiry_date'];
 
     protected function casts(): array
@@ -24,6 +27,11 @@ class InvoiceItem extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function product(): BelongsTo

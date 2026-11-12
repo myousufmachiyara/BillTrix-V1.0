@@ -83,12 +83,12 @@ class PagesTest extends TestCase
         ]);
         \Illuminate\Support\Facades\Http::fake(); // never reach FBR from tests
         $b = $this->user->business->fresh();
-        $b->update(['settings' => array_merge($b->settings ?? [], ['fbr_mode' => 'pos', 'wht' => true, 'batches' => true])]);
+        $b->update(['settings' => array_merge($b->settings ?? [], ['fbr_mode' => 'pos', 'wht' => true, 'batches' => true, 'variants' => true])]);
         Tenant::set($b->fresh());
         $urls = array_merge($urls, [
             '/fbr', '/fbr?status=failed', '/imports/products', '/imports/parties', '/imports/parties/template',
             '/reports/withholding', '/reports/expiry', '/products?export=xlsx',
-            '/settings/audit', '/settings/audit?type=invoice', '/settings/backup', '/pos/catalog',
+            '/settings/audit', '/settings/audit?type=invoice', '/settings/backup', '/pos/catalog', '/attributes', '/labels', '/products/create',
         ]);
         if ($dc) {
             $urls = array_merge($urls, ["/deliveries/{$dc->id}", "/deliveries/{$dc->id}/edit", "/deliveries/{$dc->id}/print", "/sales/create?deliveries={$dc->id}"]);
@@ -183,7 +183,7 @@ class PagesTest extends TestCase
     {
         auth()->logout();
         Tenant::forget();
-        $this->post('/login', ['email' => 'demo@billtrix.pk', 'password' => 'password'])->assertRedirect('/');
+        $this->post('/login', ['login' => 'demo@billtrix.pk', 'password' => 'password'])->assertRedirect('/');
         $this->app['auth']->forgetGuards();
         Tenant::forget(); // a new request starts with no tenant; the session user must be resolved without recursion
         $this->get('/')->assertOk()->assertSee('Al-Noor Traders');

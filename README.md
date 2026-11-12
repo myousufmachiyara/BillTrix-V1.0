@@ -23,6 +23,13 @@ Create a business either from the browser at `/register` (set `BILLTRIX_ALLOW_RE
 php artisan billtrix:create-business
 ```
 
+Users can sign in with their email or a username. Give a user a username (and password) from the server:
+
+```bash
+php artisan billtrix:set-login admin --password=yourpassword   # asks which user
+```
+or set it under *Settings → Users*.
+
 Demo data (a wholesaler with products, parties and a month of transactions):
 
 ```bash
@@ -89,6 +96,22 @@ Run the scheduler on the server so failed FBR submissions are retried: `* * * * 
 
 **Before going live (your side):** test FBR in sandbox with your real POSID/token, then switch to production; set up the server (PHP 8.3+, MySQL, HTTPS — needed for the installable app and offline POS), the scheduler cron (`* * * * * php artisan schedule:run`) and an off-site copy of `storage/app/backups`; pilot with one store before rolling out.
 
+## Product variations
+
+Switch on **Product variations** in *Settings → Business & Features*.
+
+| Area | Included |
+|---|---|
+| Attributes | *Inventory → Attributes*: Size, Colour, … with their values (`S, M, L`); an optional short code per value for SKUs (`Red=RD`); the order decides how variation names read (`Red / M`). |
+| Products | Tick *This product comes in variations*, pick the values and *Create variations*: one row per combination with its own SKU, barcode, sale/purchase price and reorder level (blank prices use the product's). SKUs are generated as `SHIRT-RD-M`, barcodes as scannable store EAN-13 numbers; type your own to override. Opening stock per variation when the product is created. A variation that has been used is switched off rather than deleted. |
+| Stock | Stock and average cost are kept per variation and per warehouse. Purchases, sales, returns (back to the same variation), POS (online and offline), quotations, orders, delivery challans, adjustments, physical counts and transfers all work per variation; a line for such a product must name its variation. A product either tracks batches or has variations. |
+| Finding items | The barcode box, product search and POS list each variation separately with its own price and stock; scanning a variation's barcode adds exactly that variation. |
+| Reports | Stock & valuation, low stock and product-wise sales show one row per variation; stock movement can be filtered by variation; the product page shows stock per variation per warehouse. |
+| Barcode labels | *Inventory → Barcode Labels* (or *Print labels* on a product): A4 sheets (3×8, 4×10) or label rolls (38×25, 50×25 mm), with name, variation, Code 128 barcode and price. Needs the `products.labels` permission. |
+| API | Products include `has_variants` and `variants[]`; send `variant_id` on document lines. |
+
+Upgrade: `php artisan migrate` adds the tables and the new permission to every business.
+
 ## How it works
 
 **Everything posts through two services, inside one DB transaction.**
@@ -124,5 +147,5 @@ app/Models/             Business, Account, Party, JournalEntry/Line, Product, Pr
 resources/views/        Blade views on the BillTrix theme; components in views/components
 public/assets/js/       billtrix.js (common), invoice.js (invoice & order editor), pos.js (POS, offline queue)
 public/sw.js            service worker (installable app, offline POS)
-tests/Feature/          PostingTest, Phase2Test (orders, challans, POS, registers), Phase3Test, FinalTest (audit, WHT vouchers, batch pick, backups, offline POS), PagesTest (every screen, English and Urdu)
+tests/Feature/          PostingTest, Phase2Test (orders, challans, POS, registers), Phase3Test, FinalTest (audit, WHT vouchers, batch pick, backups, offline POS), VariantTest (variations end to end), PagesTest (every screen, English and Urdu)
 ```

@@ -10,7 +10,7 @@
     @if ($transfer->notes)<p class="text-muted">{{ $transfer->notes }}</p>@endif
     <table class="table table-sm table-bordered">
         <thead class="table-light"><tr><th>{{ __('Product') }}</th><th class="num">{{ __('Quantity') }}</th></tr></thead>
-        <tbody>@foreach ($transfer->items as $i)<tr><td>{{ $i->product->name }}</td><td class="num">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td></tr>@endforeach</tbody>
+        <tbody>@foreach ($transfer->items as $i)<tr><td>{{ $i->itemName() }}</td><td class="num">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td></tr>@endforeach</tbody>
     </table>
     <div class="d-flex justify-content-between mt-5"><div class="border-top px-4 pt-1">{{ __('Dispatched by') }}</div><div class="border-top px-4 pt-1">{{ __('Received by') }}</div></div>
 </x-card>

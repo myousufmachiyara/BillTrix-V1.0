@@ -61,7 +61,7 @@
                     <tbody>
                     @foreach ($order->items as $i)
                         <tr>
-                            <td>{{ $loop->iteration }}</td><td>{{ $i->product->name }}</td>
+                            <td>{{ $loop->iteration }}</td><td>{{ $i->itemName() }}</td>
                             <td class="num">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td>
                             @if ($type !== 'quotation')
                                 <td class="num">{{ qty((float) $i->fulfilled_quantity / max((float) $i->factor, 0.0001)) }}</td>

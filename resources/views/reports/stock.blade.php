@@ -16,7 +16,7 @@
             <thead class="table-light"><tr><th>{{ __('Product') }}</th><th>{{ __('SKU') }}</th><th>{{ __('Category') }}</th><th class="num">{{ __('Qty') }}</th><th class="num">{{ __('Avg. cost') }}</th><th class="num">{{ __('Cost value') }}</th><th class="num">{{ __('Retail value') }}</th></tr></thead>
             <tbody>
             @foreach ($rows as $p)
-                <tr data-href="{{ route('reports.stock-movement', ['product_id' => $p->id]) }}" style="cursor:pointer" class="{{ $p->qty < 0 ? 'table-danger' : '' }}">
+                <tr data-href="{{ route('reports.stock-movement', ['product_id' => $p->id, 'variant_id' => $p->variant_id]) }}" style="cursor:pointer" class="{{ $p->qty < 0 ? 'table-danger' : '' }}">
                     <td>{{ $p->name }}</td><td class="small">{{ $p->sku }}</td><td class="small">{{ $p->category?->name }}</td>
                     <td class="num">{{ qty($p->qty) }} {{ $p->unit->short_name }}</td><td class="num">{{ money($p->avg_cost) }}</td>
                     <td class="num">{{ money($p->value) }}</td><td class="num text-muted">{{ money($p->retail_value) }}</td>

@@ -156,13 +156,16 @@ class ReportController extends Controller
     {
         $this->allow('reports.inventory');
         [$from, $to] = $this->range($request, now()->startOfMonth());
-        $product = Product::with('unit')->find($request->integer('product_id'));
+        // The product picker sends "product-variant" for a variation.
+        [$productId, $pickedVariant] = array_pad(explode('-', (string) $request->query('product_id')), 2, null);
+        $product = Product::with(['unit', 'variants'])->find((int) $productId);
         $warehouseId = $request->integer('warehouse_id') ?: null;
+        $variantId = $product?->has_variants ? ($product->variants->firstWhere('id', (int) ($request->query('variant_id') ?: $pickedVariant))?->id) : null;
 
         return view('reports.stock-movement', [
-            'from' => $from, 'to' => $to, 'product' => $product, 'warehouseId' => $warehouseId,
+            'from' => $from, 'to' => $to, 'product' => $product, 'warehouseId' => $warehouseId, 'variantId' => $variantId,
             'warehouses' => Warehouse::orderBy('name')->pluck('name', 'id'),
-            'data' => $product ? $this->reports->stockMovement($product, $warehouseId, $from, $to) : null,
+            'data' => $product ? $this->reports->stockMovement($product, $warehouseId, $from, $to, $variantId) : null,
         ]);
     }
 

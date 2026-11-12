@@ -31,7 +31,7 @@
         <thead><tr><th style="width:30px">#</th><th>{{ __('Description') }}</th><th class="r" style="width:140px">{{ __('Quantity') }}</th><th style="width:160px">{{ __('Remarks') }}</th></tr></thead>
         <tbody>
         @foreach ($delivery->items as $i)
-            <tr><td>{{ $loop->iteration }}</td><td>{{ $i->product->name }}</td><td class="r">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td><td></td></tr>
+            <tr><td>{{ $loop->iteration }}</td><td>{{ $i->itemName() }}</td><td class="r">{{ qty($i->quantity) }} {{ $i->unit->short_name }}</td><td></td></tr>
         @endforeach
         </tbody>
     </table>

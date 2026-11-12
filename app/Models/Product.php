@@ -13,9 +13,9 @@ class Product extends Model
 {
     use Auditable, BelongsToBusiness;
 
-    protected $attributes = ['track_batches' => false, 'track_stock' => true, 'is_active' => true];
+    protected $attributes = ['track_batches' => false, 'has_variants' => false, 'track_stock' => true, 'is_active' => true];
 
-    protected $fillable = ['category_id', 'unit_id', 'tax_rate_id', 'name', 'sku', 'barcode', 'hs_code', 'track_batches', 'brand', 'description', 'image_path',
+    protected $fillable = ['category_id', 'unit_id', 'tax_rate_id', 'name', 'sku', 'barcode', 'hs_code', 'track_batches', 'has_variants', 'brand', 'description', 'image_path',
         'purchase_price', 'sale_price', 'min_sale_price', 'reorder_level', 'track_stock', 'is_active'];
 
     protected function casts(): array
@@ -23,7 +23,7 @@ class Product extends Model
         return [
             'purchase_price' => 'decimal:4', 'sale_price' => 'decimal:4', 'min_sale_price' => 'decimal:4',
             'avg_cost' => 'decimal:4', 'reorder_level' => 'decimal:4',
-            'track_stock' => 'boolean', 'track_batches' => 'boolean', 'is_active' => 'boolean',
+            'track_stock' => 'boolean', 'track_batches' => 'boolean', 'has_variants' => 'boolean', 'is_active' => 'boolean',
         ];
     }
 
@@ -57,6 +57,11 @@ class Product extends Model
         return $this->hasMany(Batch::class);
     }
 
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('sort')->orderBy('id');
+    }
+
     public function balances(): HasMany
     {
         return $this->hasMany(StockBalance::class);
@@ -82,7 +87,8 @@ class Product extends Model
             $w->where('name', 'like', "%{$term}%")
                 ->orWhere('sku', $term)
                 ->orWhere('barcode', $term)
-                ->orWhereHas('units', fn (Builder $u) => $u->where('barcode', $term));
+                ->orWhereHas('units', fn (Builder $u) => $u->where('barcode', $term))
+                ->orWhereHas('variants', fn (Builder $v) => $v->where('sku', $term)->orWhere('barcode', $term));
         });
     }
 
@@ -121,10 +127,34 @@ class Product extends Model
     }
 
     /**
+     * The fields the line editors need for this product, or for one of its variations.
+     *
+     * @return array<string, mixed>
+     */
+    public function lineFields(?ProductVariant $variant = null): array
+    {
+        $units = $this->unitOptions();
+        if ($variant) {
+            $units[0]['barcode'] = $variant->barcode;
+        }
+
+        return [
+            'product_id' => $this->id,
+            'variant_id' => $variant?->id,
+            'name' => $variant ? $this->name.' — '.$variant->name : $this->name,
+            'units' => $units,
+            'avg_cost' => (float) ($variant ?? $this)->avg_cost,
+            'base_sale' => $variant ? $variant->salePrice() : (float) $this->sale_price,
+            'base_purchase' => $variant ? $variant->purchasePrice() : (float) $this->purchase_price,
+            'track_batches' => (bool) $this->track_batches,
+        ];
+    }
+
+    /**
      * Base-unit sale price: the customer's own price if one is set, then their
      * price level, then the default sale price.
      */
-    public function priceFor(?int $priceLevelId, ?float $customerPrice = null): float
+    public function priceFor(?int $priceLevelId, ?float $customerPrice = null, ?ProductVariant $variant = null): float
     {
         if ($customerPrice !== null) {
             return $customerPrice;
@@ -137,6 +167,6 @@ class Product extends Model
             }
         }
 
-        return (float) $this->sale_price;
+        return $variant ? $variant->salePrice() : (float) $this->sale_price;
     }
 }

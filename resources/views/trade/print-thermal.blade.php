@@ -37,7 +37,7 @@
     <hr>
     <table>
         @foreach ($invoice->items as $item)
-            <tr class="item"><td colspan="3">{{ $item->product->name }}</td></tr>
+            <tr class="item"><td colspan="3">{{ $item->itemName() }}</td></tr>
             <tr>
                 <td>{{ qty($item->quantity) }} {{ $item->unit->short_name }} x {{ money($item->price) }}</td>
                 <td class="r">{{ (float) $item->discount_percent ? '-'.qty($item->discount_percent).'%' : '' }}</td>

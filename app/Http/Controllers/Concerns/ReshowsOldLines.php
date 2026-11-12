@@ -14,15 +14,14 @@ trait ReshowsOldLines
             return null;
         }
         $products = Product::with(['unit', 'units.unit'])->whereIn('id', array_column($old, 'product_id'))->get()->keyBy('id');
+        $variants = \App\Models\ProductVariant::whereIn('id', array_filter(array_column($old, 'variant_id')))->get()->keyBy('id');
 
-        return collect($old)->filter(fn ($i) => $products->has($i['product_id'] ?? 0))->map(function ($i) use ($products) {
+        return collect($old)->filter(fn ($i) => $products->has($i['product_id'] ?? 0))->map(function ($i) use ($products, $variants) {
             $p = $products[$i['product_id']];
+            $v = $variants->get((int) ($i['variant_id'] ?? 0));
 
             return [
                 'id' => $i['id'] ?? null,
-                'product_id' => $p->id,
-                'name' => $p->name,
-                'units' => $p->unitOptions(),
                 'unit_id' => (int) ($i['unit_id'] ?? $p->unit_id),
                 'quantity' => (float) ($i['quantity'] ?? 0),
                 'price' => (float) ($i['price'] ?? 0),
@@ -32,14 +31,10 @@ trait ReshowsOldLines
                 'order_item_id' => $i['order_item_id'] ?? null,
                 'delivery_item_id' => $i['delivery_item_id'] ?? null,
                 'lock' => ! empty($i['delivery_item_id']),
-                'avg_cost' => (float) $p->avg_cost,
-                'base_sale' => (float) $p->sale_price,
-                'base_purchase' => (float) $p->purchase_price,
-                'track_batches' => (bool) $p->track_batches,
                 'batch_no' => $i['batch_no'] ?? null,
                 'expiry_date' => $i['expiry_date'] ?? null,
                 'stock' => null,
-            ];
+            ] + $p->lineFields($v && (int) $v->product_id === $p->id ? $v : null);
         })->values()->all();
     }
 }

@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasVariantName;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeliveryItem extends Model
 {
+    use HasVariantName;
+
     public $timestamps = false;
 
-    protected $fillable = ['delivery_id', 'order_item_id', 'product_id', 'unit_id', 'factor', 'quantity', 'base_quantity', 'unit_cost'];
+    protected $fillable = ['delivery_id', 'order_item_id', 'product_id', 'variant_id', 'unit_id', 'factor', 'quantity', 'base_quantity', 'unit_cost'];
 
     protected function casts(): array
     {
@@ -19,6 +22,11 @@ class DeliveryItem extends Model
     public function delivery(): BelongsTo
     {
         return $this->belongsTo(Delivery::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function product(): BelongsTo

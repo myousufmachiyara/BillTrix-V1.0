@@ -28,6 +28,8 @@ class BackupService
         'stock_adjustment_items' => ['stock_adjustment_id', 'stock_adjustments'],
         'stock_transfer_items' => ['stock_transfer_id', 'stock_transfers'],
         'batch_stocks' => ['batch_id', 'batches'],
+        'attribute_values' => ['attribute_id', 'attributes'],
+        'attribute_value_product_variant' => ['product_variant_id', 'product_variants'],
     ];
 
     private const HIDDEN = ['password', 'remember_token'];
@@ -111,7 +113,7 @@ class BackupService
                 $rows = DB::table($table)->where('business_id', $businessId)->orderBy('id')->get();
             } elseif (isset(self::CHILDREN[$table])) {
                 [$fk, $parent] = self::CHILDREN[$table];
-                $rows = DB::table($table)->whereIn($fk, $ids[$parent] ?? [])->orderBy('id')->get();
+                $rows = DB::table($table)->whereIn($fk, $ids[$parent] ?? [])->orderBy(Schema::hasColumn($table, 'id') ? 'id' : $fk)->get();
             } else {
                 continue;
             }
@@ -152,7 +154,7 @@ class BackupService
     private function tables(): array
     {
         $order = ['businesses', 'branches', 'warehouses', 'users', 'document_sequences', 'tax_rates', 'price_levels', 'accounts', 'parties', 'party_prices',
-            'units', 'categories', 'products', 'product_units', 'product_prices', 'batches', 'batch_stocks', 'stock_balances', 'stock_movements',
+            'units', 'categories', 'attributes', 'attribute_values', 'products', 'product_variants', 'attribute_value_product_variant', 'product_units', 'product_prices', 'batches', 'batch_stocks', 'stock_balances', 'stock_movements',
             'invoices', 'invoice_items', 'orders', 'order_items', 'deliveries', 'delivery_items', 'journal_entries', 'journal_lines', 'payment_allocations',
             'stock_adjustments', 'stock_adjustment_items', 'stock_transfers', 'stock_transfer_items', 'cash_sessions', 'audit_logs'];
 

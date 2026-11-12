@@ -42,7 +42,7 @@
     BT.productSelect($('#adj-product'), () => ({ warehouse_id: $('[name=warehouse_id]').val() }));
     $('#adj-product').on('select2:select', function (e) {
         const p = e.params.data, i = n++;
-        if ($(`#adj-lines [data-pid=${p.id}]`).length) { $(this).val(null).trigger('change'); return; }
+        if ($(`#adj-lines [data-pid="${p.id}"]`).length) { $(this).val(null).trigger('change'); return; }
         const unit = (p.units[0] || {}).name || '';
         const cells = type === 'count'
             ? `<td class="num">${BT.qty(p.stock || 0)}</td><td><input type="number" step="any" min="0" name="items[${i}][counted]" class="form-control form-control-sm text-end cnt" data-sys="${p.stock || 0}" required></td><td class="num diff"></td>`
@@ -51,7 +51,7 @@
         const batch = p.track_batches && type !== 'count'
             ? `<div class="d-flex gap-1 mt-1"><input name="items[${i}][batch_no]" class="form-control form-control-sm" style="max-width:130px" placeholder="Batch no.${type === 'adjustment' ? ' (blank = FEFO)' : ''}">`
               + `<input type="date" name="items[${i}][expiry_date]" class="form-control form-control-sm" style="max-width:150px" title="Expiry (for additions)"></div>` : '';
-        $('#adj-lines tbody').append(`<tr data-pid="${p.id}"><td><input type="hidden" name="items[${i}][product_id]" value="${p.id}">${BT.esc(p.name)} <small class="text-muted">${BT.esc(unit)}</small>${batch}</td>${cells}
+        $('#adj-lines tbody').append(`<tr data-pid="${p.id}"><td><input type="hidden" name="items[${i}][product_id]" value="${p.product_id || p.id}">${p.variant_id ? `<input type="hidden" name="items[${i}][variant_id]" value="${p.variant_id}">` : ''}${BT.esc(p.name)} <small class="text-muted">${BT.esc(unit)}</small>${batch}</td>${cells}
             <td><button type="button" class="btn btn-link text-danger p-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td></tr>`);
         $(this).val(null).trigger('change');
         $('#adj-lines tbody tr:last input:visible:first').trigger('focus');

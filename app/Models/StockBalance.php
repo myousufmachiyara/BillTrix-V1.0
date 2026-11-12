@@ -10,7 +10,7 @@ class StockBalance extends Model
 {
     use BelongsToBusiness;
 
-    protected $fillable = ['product_id', 'warehouse_id', 'quantity'];
+    protected $fillable = ['product_id', 'variant_id', 'warehouse_id', 'quantity'];
 
     protected function casts(): array
     {

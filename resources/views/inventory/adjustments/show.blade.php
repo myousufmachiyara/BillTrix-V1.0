@@ -16,7 +16,7 @@
         <thead class="table-light"><tr><th>{{ __('Product') }}</th>@if ($adj->type === 'count')<th class="num">{{ __('System') }}</th>@endif<th class="num">{{ __('Change') }}</th><th class="num">{{ __('Unit cost') }}</th><th class="num">{{ __('Value') }}</th></tr></thead>
         <tbody>
         @foreach ($adj->items as $i)
-            <tr><td>{{ $i->product->name }}</td>
+            <tr><td>{{ $i->itemName() }}</td>
                 @if ($adj->type === 'count')<td class="num">{{ qty($i->system_quantity) }}</td>@endif
                 <td class="num {{ $i->quantity < 0 ? 'text-danger' : 'text-success' }}">{{ qty($i->quantity) }} {{ $i->product->unit->short_name }}</td>
                 <td class="num">{{ money($i->unit_cost) }}</td><td class="num">{{ money($i->quantity * $i->unit_cost) }}</td></tr>

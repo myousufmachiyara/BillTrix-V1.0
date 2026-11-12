@@ -53,14 +53,15 @@
     // ── cart ──────────────────────────────────────────────────────────────
     function add(p, qty = 1) {
         const unitId = p.unit_id || p.base_unit_id;
-        const i = cart.findIndex((l) => l.product_id === p.id && +l.unit_id === +unitId);
+        const pid = p.product_id || p.id, vid = p.variant_id || null;
+        const i = cart.findIndex((l) => l.product_id === pid && (l.variant_id || null) === vid && +l.unit_id === +unitId);
         if (i >= 0) {
             cart[i].qty = BT.round(cart[i].qty + qty, 4);
             sel = i;
         } else {
             const unit = p.units.find((u) => +u.unit_id === +unitId) || { factor: 1 };
             cart.push({
-                product_id: p.id, name: p.name, units: p.units, unit_id: unitId, qty,
+                product_id: pid, variant_id: vid, name: p.name, units: p.units, unit_id: unitId, qty,
                 price: BT.round(unitPrice(p, unit), 4), disc: 0, tax_rate: P.tax ? (p.tax_rate || 0) : 0,
                 avg_cost: p.avg_cost || 0, stock: p.stock, base_sale: p.sale_price,
             });
@@ -222,7 +223,7 @@
     /** Receipt printed straight from the browser for a bill saved offline. */
     function printLocal(bill, change) {
         const rows = bill.body.items.map((i) => {
-            const l = bill.lines.find((x) => x.product_id === i.product_id && +x.unit_id === +i.unit_id) || {};
+            const l = bill.lines.find((x) => x.product_id === i.product_id && (x.variant_id || null) === (i.variant_id || null) && +x.unit_id === +i.unit_id) || {};
             return `<tr><td colspan="2">${BT.esc(l.name || '')}</td></tr><tr><td>${BT.qty(i.quantity)} x ${BT.money(i.price)}${i.discount_percent ? ' -' + i.discount_percent + '%' : ''}</td><td class="r">${BT.money(lineCalc({ qty: i.quantity, price: i.price, disc: i.discount_percent || 0, tax_rate: i.tax_rate || 0 }).amount)}</td></tr>`;
         }).join('');
         const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -304,7 +305,7 @@
         if (cart.length && !offline()) {
             $.getJSON(BT.urls.products, { ids: cart.map((l) => l.product_id).join(','), party_id: p.id, warehouse_id: P.warehouseId }, (d) => {
                 cart.forEach((l) => {
-                    const fresh = d.results.find((r) => r.id === l.product_id);
+                    const fresh = d.results.find((r) => (r.product_id || r.id) === l.product_id && (r.variant_id || null) === (l.variant_id || null));
                     if (!fresh) return;
                     l.base_sale = fresh.sale_price; l.units = fresh.units;
                     l.price = BT.round(unitPrice(fresh, unitOf(l)), 4);
@@ -405,14 +406,14 @@
             party_id: party.id, warehouse_id: P.warehouseId,
             customer_name: party.walk_in ? $('#cust-name').val() : null, customer_phone: party.walk_in ? $('#cust-phone').val() : null,
             discount: tt.disc,
-            items: cart.map((l) => ({ product_id: l.product_id, unit_id: l.unit_id, quantity: l.qty, price: l.price, discount_percent: l.disc, tax_rate: l.tax_rate })),
+            items: cart.map((l) => ({ product_id: l.product_id, variant_id: l.variant_id || null, unit_id: l.unit_id, quantity: l.qty, price: l.price, discount_percent: l.disc, tax_rate: l.tax_rate })),
             payments,
             client_uuid: uuid(),
             sold_at: today(),
         };
         const keepOffline = () => {
             const bill = { at: new Date().toLocaleString(), party: party.text, total: tt.total, paid: payments.reduce((a, p) => a + p.amount, 0),
-                body, lines: cart.map((l) => ({ product_id: l.product_id, unit_id: l.unit_id, name: l.name })) };
+                body, lines: cart.map((l) => ({ product_id: l.product_id, variant_id: l.variant_id || null, unit_id: l.unit_id, name: l.name })) };
             setQueue([...queue(), bill]);
             payModal.hide();
             toast(t('No connection — bill saved on this device and will be sent automatically.'), 'warning');

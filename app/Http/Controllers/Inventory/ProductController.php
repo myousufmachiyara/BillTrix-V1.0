@@ -32,6 +32,7 @@ class ProductController extends Controller
 
         $query = Product::with(['category', 'unit', 'taxRate'])
             ->withSum('balances as stock', 'quantity')
+            ->withCount(['variants' => fn ($v) => $v->where('is_active', true)])
             ->search($request->query('q'))
             ->when($request->query('category'), fn ($q, $c) => $q->where('category_id', $c))
             ->when($request->query('status') === 'inactive', fn ($q) => $q->where('is_active', false), fn ($q) => $q->where('is_active', true))
@@ -72,7 +73,22 @@ class ProductController extends Controller
 
         $product = DB::transaction(function () use ($request, $opening, $docs) {
             $product = $this->persist(new Product, $request);
-            if ($product->track_stock && (float) ($opening['opening_qty'] ?? 0) > 0) {
+            if ($product->has_variants && $product->track_stock) {
+                $byCombo = $product->variants()->with('values')->get()->keyBy(fn ($v) => $v->values->pluck('id')->sort()->implode('-'));
+                $items = collect($request->input('variants', []))->map(function ($r) use ($byCombo, $opening, $product) {
+                    $v = $byCombo->get(collect($r['value_ids'] ?? [])->map(fn ($x) => (int) $x)->sort()->implode('-'));
+
+                    return $v && (float) ($r['opening_qty'] ?? 0) > 0
+                        ? ['product_id' => $product->id, 'variant_id' => $v->id, 'quantity' => (float) $r['opening_qty'], 'unit_cost' => $opening['opening_cost'] ?? $v->purchasePrice()]
+                        : null;
+                })->filter()->values()->all();
+                if ($items) {
+                    $docs->adjust([
+                        'warehouse_id' => $opening['opening_warehouse_id'] ?? Warehouse::where('is_default', true)->value('id') ?? Warehouse::value('id'),
+                        'date' => now()->toDateString(), 'type' => 'opening', 'notes' => "Opening stock for {$product->name}", 'items' => $items,
+                    ]);
+                }
+            } elseif ($product->track_stock && (float) ($opening['opening_qty'] ?? 0) > 0) {
                 $docs->adjust([
                     'warehouse_id' => $opening['opening_warehouse_id'] ?? Warehouse::where('is_default', true)->value('id') ?? Warehouse::value('id'),
                     'date' => now()->toDateString(),
@@ -97,9 +113,12 @@ class ProductController extends Controller
 
         return view('inventory.products.show', [
             'product' => $product,
-            'stock' => StockBalance::with('warehouse')->where('product_id', $product->id)->get(),
+            'stock' => StockBalance::with('warehouse')->where('product_id', $product->id)
+                ->selectRaw('warehouse_id, SUM(quantity) as quantity')->groupBy('warehouse_id')->get(),
+            'variants' => $product->has_variants ? $product->variants()->with('balances')->get() : collect(),
+            'warehouseNames' => Warehouse::pluck('name', 'id'),
             'batches' => $product->track_batches ? app(\App\Services\StockService::class)->batchStock($product->id) : collect(),
-            'movements' => StockMovement::with(['warehouse', 'source'])->where('product_id', $product->id)->latest('date')->latest('id')->limit(25)->get(),
+            'movements' => StockMovement::with(['warehouse', 'source', 'variant'])->where('product_id', $product->id)->latest('date')->latest('id')->limit(25)->get(),
         ]);
     }
 
@@ -144,21 +163,23 @@ class ProductController extends Controller
         $levelId = $request->integer('price_level_id') ?: $party?->price_level_id;
         $exact = $request->boolean('barcode');
 
-        $query = Product::with(['unit', 'units.unit', 'prices', 'taxRate'])
+        $query = Product::with(['unit', 'units.unit', 'prices', 'taxRate', 'variants' => fn ($v) => $v->where('is_active', true)])
             ->where('is_active', true)
             ->when($request->query('ids'), fn ($q, $ids) => $q->whereIn('id', explode(',', $ids)))
             ->when($request->integer('category_id'), fn ($q, $c) => $q->where(fn ($w) => $w->where('category_id', $c)->orWhereIn('category_id', \App\Models\Category::where('parent_id', $c)->pluck('id'))));
 
         if ($term !== '') {
             $exact
-                ? $query->where(fn ($w) => $w->where('barcode', $term)->orWhere('sku', $term)->orWhereHas('units', fn ($u) => $u->where('barcode', $term)))
+                ? $query->where(fn ($w) => $w->where(fn ($x) => $x->where('has_variants', false)->where(fn ($y) => $y->where('barcode', $term)->orWhere('sku', $term)->orWhereHas('units', fn ($u) => $u->where('barcode', $term))))
+                    ->orWhereHas('variants', fn ($v) => $v->where('is_active', true)->where(fn ($y) => $y->where('barcode', $term)->orWhere('sku', $term))))
                 : $query->search($term);
         }
 
         $products = $query->orderBy('name')->limit($exact ? 1 : ($request->integer('category_id') ? 60 : 25))->get();
         $stock = StockBalance::whereIn('product_id', $products->pluck('id'))
             ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
-            ->selectRaw('product_id, SUM(quantity) as qty')->groupBy('product_id')->pluck('qty', 'product_id');
+            ->selectRaw('product_id, variant_id, SUM(quantity) as qty')->groupBy('product_id', 'variant_id')->get()
+            ->mapWithKeys(fn ($r) => [$r->product_id.'-'.$r->variant_id => (float) $r->qty]);
 
         $special = $party && Tenant::business()->feature('customer_prices')
             ? PartyPrice::where('party_id', $party->id)->whereIn('product_id', $products->pluck('id'))->pluck('price', 'product_id')
@@ -177,8 +198,26 @@ class ProductController extends Controller
             ->map(fn ($b) => ['product_id' => $b->product_id, 'batch_no' => $b->batch_no, 'expiry_date' => $b->expiry_date ? substr((string) $b->expiry_date, 0, 10) : null, 'quantity' => (float) $b->quantity])
             ->groupBy('product_id');
 
-        return response()->json(['results' => $products->map(function (Product $p) use ($stock, $levelId, $term, $exact, $special, $batches) {
+        // A product with variations is offered once per variation (each with its own SKU, barcode, price and stock).
+        $rows = $products->flatMap(function (Product $p) use ($term, $exact) {
+            if (! $p->has_variants) {
+                return [[$p, null]];
+            }
+            $variants = $p->variants;
+            $hit = $term !== '' ? $variants->filter(fn ($v) => $v->barcode === $term || strcasecmp((string) $v->sku, $term) === 0) : collect();
+            if ($exact || $hit->isNotEmpty()) {
+                $variants = $hit;
+            }
+
+            return $variants->map(fn ($v) => [$p, $v->setRelation('product', $p)])->all();
+        })->take($exact ? 1 : 80);
+
+        return response()->json(['results' => $rows->map(function (array $row) use ($stock, $levelId, $term, $exact, $special, $batches) {
+            [$p, $v] = $row;
             $units = $p->unitOptions();
+            if ($v) {
+                $units[0]['barcode'] = $v->barcode;
+            }
             $customerPrice = isset($special[$p->id]) ? (float) $special[$p->id] : null;
             if ($customerPrice !== null) {
                 // The customer's own price wins over fixed pack prices.
@@ -186,25 +225,31 @@ class ProductController extends Controller
             }
             $matched = $exact ? collect($units)->first(fn ($u) => $u['barcode'] === $term) : null;
 
+            $sku = $v ? $v->sku : $p->sku;
+
             return [
-                'id' => $p->id,
-                'text' => $p->name.($p->sku ? " [{$p->sku}]" : ''),
-                'name' => $p->name,
+                'id' => $v ? $p->id.'-'.$v->id : $p->id,
+                'product_id' => $p->id,
+                'variant_id' => $v?->id,
+                'text' => ($v ? $p->name.' — '.$v->name : $p->name).($sku ? " [{$sku}]" : ''),
+                'name' => $v ? $p->name.' — '.$v->name : $p->name,
+                'sku' => $sku,
+                'barcode' => $v ? $v->barcode : $p->barcode,
                 'base_unit_id' => $p->unit_id,
                 'units' => $units,
                 'unit_id' => $matched['unit_id'] ?? $p->unit_id,
-                'sale_price' => $p->priceFor($levelId, $customerPrice),
+                'sale_price' => $p->priceFor($levelId, $customerPrice, $v),
                 'special_price' => $customerPrice !== null,
-                'purchase_price' => (float) $p->purchase_price,
-                'avg_cost' => (float) $p->avg_cost,
+                'purchase_price' => $v ? $v->purchasePrice() : (float) $p->purchase_price,
+                'avg_cost' => (float) ($v ?? $p)->avg_cost,
                 'min_sale_price' => (float) $p->min_sale_price,
                 'tax_rate' => (float) ($p->taxRate?->rate ?? 0),
-                'stock' => $p->track_stock ? (float) ($stock[$p->id] ?? 0) : null,
+                'stock' => $p->track_stock ? (float) ($stock[$p->id.'-'.($v?->id ?? 0)] ?? 0) : null,
                 'track_batches' => (bool) $p->track_batches,
                 'batches' => $batches->get($p->id, collect())->values(),
                 'category_id' => $p->category_id,
             ];
-        })]);
+        })->values()]);
     }
 
     private function formData(Product $product): array
@@ -216,6 +261,17 @@ class ProductController extends Controller
             'taxRates' => TaxRate::where('is_active', true)->orderBy('rate')->get(),
             'priceLevels' => PriceLevel::orderBy('id')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->pluck('name', 'id'),
+            'attributes' => Tenant::business()->feature('variants')
+                ? \App\Models\ProductAttribute::with('values')->orderBy('sort')->orderBy('name')->get()
+                : collect(),
+            'variantRows' => $product->exists
+                ? $product->variants()->with('values')->get()->map(fn ($v) => [
+                    'id' => $v->id, 'value_ids' => $v->values->pluck('id')->all(), 'name' => $v->name, 'sku' => $v->sku, 'barcode' => $v->barcode,
+                    'sale_price' => $v->sale_price !== null ? (float) $v->sale_price : null, 'purchase_price' => $v->purchase_price !== null ? (float) $v->purchase_price : null,
+                    'reorder_level' => $v->reorder_level !== null ? (float) $v->reorder_level : null, 'is_active' => $v->is_active, 'stock' => $v->stockIn(),
+                ])->all()
+                : [],
+            'variantsLocked' => $product->exists && $product->movements()->exists(),
         ];
     }
 
@@ -245,6 +301,17 @@ class ProductController extends Controller
             'packs.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
             'prices' => ['array'],
             'prices.*' => ['nullable', 'numeric', 'min:0'],
+            'variants' => ['array'],
+            'variants.*.id' => ['nullable', 'integer'],
+            'variants.*.value_ids' => ['required_with:variants', 'array', 'min:1'],
+            'variants.*.value_ids.*' => ['integer'],
+            'variants.*.sku' => ['nullable', 'string', 'max:80'],
+            'variants.*.barcode' => ['nullable', 'string', 'max:64'],
+            'variants.*.sale_price' => ['nullable', 'numeric', 'min:0'],
+            'variants.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'variants.*.reorder_level' => ['nullable', 'numeric', 'min:0'],
+            'variants.*.opening_qty' => ['nullable', 'numeric', 'min:0'],
+            'variants.*.is_active' => ['nullable', 'boolean'],
         ], ['packs.*.unit_id.different' => 'A pack unit must differ from the base unit.', 'packs.*.factor.gt' => 'Pack size must be more than 1 base unit.']);
 
         if ($product->exists && (int) $data['unit_id'] !== $product->unit_id && $product->movements()->exists()) {
@@ -264,6 +331,17 @@ class ProductController extends Controller
         }
         $product->is_active = $request->boolean('is_active');
 
+        if (Tenant::business()->feature('variants') && $request->has('has_variants_shown')) {
+            $wants = $request->boolean('has_variants');
+            if ($product->exists && $product->has_variants !== $wants && $product->movements()->exists()) {
+                abort(422, __('Variations cannot be switched on or off once the product has stock movements.'));
+            }
+            if ($wants && $product->track_batches) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['has_variants' => __('A product can track batches or have variations, not both.')]);
+            }
+            $product->has_variants = $wants;
+        }
+
         if ($request->hasFile('image')) {
             if ($product->image_path) {
                 Storage::disk('public')->delete($product->image_path);
@@ -275,6 +353,16 @@ class ProductController extends Controller
         $product->units()->delete();
         foreach ($data['packs'] ?? [] as $pack) {
             $product->units()->create($pack);
+        }
+
+        if ($product->has_variants) {
+            $rows = collect($data['variants'] ?? [])->map(fn ($r) => $r + ['is_active' => ! empty($r['is_active'])])->values()->all();
+            if (! $rows) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['variants' => __('Add at least one variation.')]);
+            }
+            app(\App\Services\VariantService::class)->sync($product, $rows);
+        } elseif ($product->variants()->exists() && ! $product->movements()->exists()) {
+            $product->variants()->delete();
         }
 
         $product->prices()->delete();

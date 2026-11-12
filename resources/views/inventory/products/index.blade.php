@@ -32,7 +32,7 @@
             @forelse ($products as $p)
                 @php $low = $p->track_stock && (float) $p->reorder_level > 0 && (float) $p->stock <= (float) $p->reorder_level; @endphp
                 <tr data-href="{{ route('products.show', $p) }}" style="cursor:pointer">
-                    <td class="fw-semibold">{{ $p->name }}</td>
+                    <td class="fw-semibold">{{ $p->name }} @if ($p->has_variants)<span class="badge bg-light text-dark border fw-normal">{{ $p->variants_count }} {{ __('variations') }}</span>@endif</td>
                     <td class="small">{{ $p->sku }}<br><span class="text-muted">{{ $p->barcode }}</span></td>
                     <td>{{ $p->category?->name }}</td>
                     <td class="num">{{ money($p->sale_price) }}</td>
