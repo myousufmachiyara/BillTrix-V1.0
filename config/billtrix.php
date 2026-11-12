@@ -11,7 +11,7 @@
 
 return [
 
-    'allow_registration' => env('BILLTRIX_ALLOW_REGISTRATION', true),
+    'allow_registration' => env('BILLTRIX_ALLOW_REGISTRATION', false),
 
     'categories' => [
         'retail' => 'Retailer',

@@ -189,8 +189,18 @@ class PagesTest extends TestCase
         $this->get('/')->assertOk()->assertSee('Al-Noor Traders');
     }
 
+    public function test_registration_is_off_by_default(): void
+    {
+        auth()->logout();
+        Tenant::forget();
+        $this->get('/login')->assertOk()->assertDontSee('/register')->assertSee('toggle-password', false);
+        $this->get('/register')->assertNotFound();
+        $this->post('/register', ['business_name' => 'X', 'name' => 'X', 'email' => 'x@x.pk', 'password' => 'password123', 'password_confirmation' => 'password123'])->assertNotFound();
+    }
+
     public function test_registration_creates_a_ready_business(): void
     {
+        config(['billtrix.allow_registration' => true]);
         auth()->logout();
         Tenant::forget();
         $this->post('/register', ['business_name' => 'New Shop', 'category' => 'retail', 'name' => 'Ali', 'email' => 'ali@shop.pk',

@@ -13,8 +13,11 @@
     <div class="form-group mb-3">
         <label class="form-label">{{ __('Password') }}</label>
         <div class="input-group">
-            <input name="password" type="password" class="form-control form-control-lg" required autocomplete="current-password">
-            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+            <input name="password" id="password" type="password" class="form-control form-control-lg" required autocomplete="current-password">
+            <button type="button" class="input-group-text toggle-password" id="toggle-password" aria-label="{{ __('Show password') }}" title="{{ __('Show password') }}"
+                data-show="{{ __('Show password') }}" data-hide="{{ __('Hide password') }}" style="cursor:pointer">
+                <i class="fas fa-eye"></i>
+            </button>
         </div>
     </div>
     <div class="row align-items-center">
@@ -23,8 +26,15 @@
         </div>
         <div class="col-6 text-end"><button type="submit" class="btn btn-primary">{{ __('Sign In') }}</button></div>
     </div>
-    @if (config('billtrix.allow_registration'))
-        <p class="text-center mt-4 mb-0">{{ __('New business?') }} <a href="{{ route('register') }}">{{ __('Create your BillTrix account') }}</a></p>
-    @endif
 </form>
+<script>
+document.getElementById('toggle-password').addEventListener('click', function () {
+    var input = document.getElementById('password'), show = input.type === 'password', icon = this.querySelector('i');
+    input.type = show ? 'text' : 'password';
+    icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+    this.setAttribute('aria-label', show ? this.dataset.hide : this.dataset.show);
+    this.title = this.getAttribute('aria-label');
+    input.focus();
+});
+</script>
 @endsection
