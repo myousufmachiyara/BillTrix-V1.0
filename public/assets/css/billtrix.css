@@ -1,27 +1,13 @@
 /* BillTrix additions on top of the Porto admin theme */
 :root { --bt-muted: #6c757d; }
-/* Top bar + sidebar header, matching the BillTrix base theme */
-.bt-topbar { display: flex; align-items: center; justify-content: space-between; z-index: 1010; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
-.bt-topbar .logo-container { height: 50px; display: flex; align-items: center; padding: 0 0 0 12px; background: transparent; border: 0; }
-.bt-topbar-right { display: flex; align-items: center; margin-left: auto; height: 50px; }
-.bt-topbar .userbox { margin: 0 20px 0 0; }
-.bt-topbar .userbox > a { display: flex; align-items: center; }
-.bt-topbar .toggle-sidebar-left { font-size: 1.3rem; cursor: pointer; padding: 0 16px 0 4px; color: #333; }
-.sidebar-left .sidebar-header .sidebar-title { display: flex; justify-content: space-between; align-items: center; }
-.sidebar-left .sidebar-header .logo { display: block; }
-.sidebar-left .sidebar-header { height: 60px; display: flex; align-items: center; }
-.sidebar-left .sidebar-header .sidebar-title { flex: 1; padding: 0 0 0 22px; margin: 0; line-height: 1; }
-.sidebar-left .sidebar-header .sidebar-logo { width: 135px; max-width: none; height: auto; }
-html.sidebar-left-collapsed .sidebar-left .sidebar-header .sidebar-title { display: none; }
+/* Top bar + sidebar: markup and sizes come from the base theme (layouts/app.blade.php) */
 @media (max-width: 767px) {
     html.sidebar-left-opened #sidebar-left { z-index: 1020 !important; }
-    .bt-topbar .userbox .profile-info { max-width: 140px; }
-    .sidebar-left .sidebar-header .toggle-sidebar-left { color: #fff; font-size: 1.2rem; padding: 0 12px; cursor: pointer; }
+    .sidebar-left .sidebar-header .toggle-sidebar-left { color: #fff; font-size: 1.2rem; cursor: pointer; }
 }
 .bt-pagebar { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; margin: 0 0 1.25rem; }
 .bt-pagebar h2 { font-size: 1.35rem; font-weight: 600; margin: 0; color: #222; }
 @media (min-width: 768px) {
-    html.fixed .inner-wrapper { padding-top: 50px; }
     html.fixed .content-body { padding: 24px 28px; }
 }
 @media (max-width: 767px) { .content-body { padding: 16px 12px; } }
@@ -59,7 +45,7 @@ html.sidebar-left-collapsed .sidebar-left .sidebar-header .sidebar-title { displ
 .coa-tree .group td { font-weight: 600; background: #fafbfc; }
 
 @media print {
-    .sidebar-left, .bt-topbar, .bt-pagebar, .no-print, .alert, form.filters { display: none !important; }
+    .sidebar-left, .page-header, .bt-pagebar, .no-print, .alert, form.filters { display: none !important; }
     .content-body { padding: 0 !important; margin: 0 !important; }
     html.fixed .inner-wrapper { padding-top: 0 !important; }
     .card { border: 0 !important; box-shadow: none !important; }
@@ -67,7 +53,7 @@ html.sidebar-left-collapsed .sidebar-left .sidebar-header .sidebar-title { displ
 
 /* Urdu: Nastaliq type, right-to-left content; the sidebar keeps its place for a stable layout */
 .lang-ur .content-body, .lang-ur .bt-pagebar { direction: rtl; }
-.lang-ur .content-body, .lang-ur .sidebar-left .nav-main, .lang-ur .bt-topbar-right, .lang-ur .modal-block {
+.lang-ur .content-body, .lang-ur .sidebar-left .nav-main, .lang-ur .page-header .userbox, .lang-ur .modal-block {
     font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", Poppins, sans-serif; line-height: 2;
 }
 /* The sidebar keeps the theme's left-to-right layout (icon, then label) in Urdu too */
@@ -78,11 +64,8 @@ html.sidebar-left-collapsed .sidebar-left .sidebar-header .sidebar-title { displ
 .lang-ur .table, .lang-ur .form-label { text-align: right; }
 .lang-ur .text-end { text-align: left !important; }
 
-/* User menu: form buttons look like the menu links */
-.bt-topbar .dropdown-menu .list-unstyled > li > a,
-.bt-topbar .dropdown-menu .list-unstyled > li > form > button { display: block; width: 100%; padding: 6px 12px; font-size: 13px; color: #555; text-align: start; border: 0; background: none; line-height: 1.5; text-decoration: none; }
-.bt-topbar .dropdown-menu .list-unstyled > li > a:hover,
-.bt-topbar .dropdown-menu .list-unstyled > li > form > button:hover { background: #f4f4f4; color: #222; }
-.bt-topbar .dropdown-menu { min-width: 200px; }
-.bt-topbar .dropdown-menu .list-unstyled > li > a, .bt-topbar .dropdown-menu .list-unstyled > li > form > button { white-space: nowrap; }
-.bt-topbar .dropdown-menu .list-unstyled i { width: 18px; margin-inline-end: 4px; text-align: center; }
+/* User menu */
+.page-header .userbox .dropdown-menu { min-width: 200px; }
+.page-header .userbox .dropdown-menu .list-unstyled > li > a,
+.page-header .userbox .dropdown-menu .list-unstyled > li > form > button { display: block; width: 100%; padding: 6px 12px; color: #555; text-align: start; white-space: nowrap; text-decoration: none; }
+.page-header .userbox .dropdown-menu i { width: 18px; text-align: center; }

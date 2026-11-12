@@ -73,7 +73,7 @@
         // Installable app (PWA): service worker, install button, forget cached pages on logout.
         if ('serviceWorker' in navigator && window.BT_SW) {
             navigator.serviceWorker.register(window.BT_SW).catch(() => {});
-            $('#logout-form').on('submit', () => {
+            $('#logout-form, .logout-form').on('submit', () => {
                 navigator.serviceWorker.controller?.postMessage({ type: 'clear-pages' });
                 try { Object.keys(localStorage).filter((k) => k.startsWith('bt-pos-catalog-')).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* storage blocked */ }
             });

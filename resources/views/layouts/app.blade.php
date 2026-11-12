@@ -26,20 +26,27 @@
     @if (app()->getLocale() === 'ur')
         <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">
     @endif
+    <style>
+        /* From the BillTrix base theme layout */
+        .cust-pad { padding-top: 0; }
+        @media (min-width: 768px) {
+            .cust-pad { padding: 60px 10px 0px 20px; }
+            .sidebar-logo { width: 60%; height: auto; padding-top: 5px; }
+        }
+        @media (max-width: 767px) {
+            .sidebar-logo { width: 140px; height: auto; padding-top: 12px; }
+            .sidebar-left .sidebar-header .toggle-sidebar-left { padding-top: 14px; }
+        }
+    </style>
     @stack('styles')
 </head>
 <body class="lang-{{ app()->getLocale() }}">
 <section class="body">
-    {{-- Top bar: same structure as the BillTrix base theme (logo lives in the sidebar) --}}
-    <header class="page-header bt-topbar">
-        <div class="logo-container d-md-none">
-            <a href="{{ route('dashboard') }}" class="logo">
-                <img src="{{ asset('assets/img/billtrix-logo-black.png') }}" height="30" alt="BillTrix">
-            </a>
-        </div>
-        <div class="bt-topbar-right">
-            <div id="userbox" class="userbox">
-                <a href="#" data-bs-toggle="dropdown">
+    {{-- Top bar: same markup as the BillTrix base theme (FFK / HCF / SAB); the logo lives in the sidebar --}}
+    <header class="page-header">
+        <div class="logo-container d-none d-md-block">
+            <div id="userbox" class="userbox" style="float:right !important;">
+                <a href="#" data-bs-toggle="dropdown" style="margin-right: 20px;">
                     <div class="profile-info">
                         <span class="name">{{ auth()->user()->name }}</span>
                         <span class="role">{{ auth()->user()->roles->first()?->name }}</span>
@@ -53,7 +60,7 @@
                         <li>
                             <form action="{{ route('locale.change') }}" method="POST">@csrf @method('PUT')
                                 <input type="hidden" name="locale" value="{{ app()->getLocale() === 'ur' ? 'en' : 'ur' }}">
-                                <button type="submit"><i class="fas fa-language"></i> {{ app()->getLocale() === 'ur' ? __('English') : 'اردو' }}</button>
+                                <button type="submit" style="background:transparent;border:none;font-size:14px;"><i class="fas fa-language"></i> {{ app()->getLocale() === 'ur' ? __('English') : 'اردو' }}</button>
                             </form>
                         </li>
                         <li class="d-none" id="install-app-item"><a role="menuitem" href="#" id="install-app"><i class="fas fa-mobile-alt"></i> {{ __('Install app') }}</a></li>
@@ -62,17 +69,53 @@
                         @endcan
                         <li>
                             <form action="{{ route('logout') }}" method="POST" id="logout-form">@csrf
-                                <button type="submit"><i class="fas fa-power-off"></i> {{ __('Logout') }}</button>
+                                <button type="submit" style="background:transparent;border:none;font-size:14px;"><i class="fas fa-power-off"></i> {{ __('Logout') }}</button>
                             </form>
                         </li>
                     </ul>
                 </div>
             </div>
-            <i class="fas fa-bars toggle-sidebar-left d-md-none" data-toggle-class="sidebar-left-opened" data-target="html" data-fire-event="sidebar-left-opened" aria-label="{{ __('Toggle sidebar') }}"></i>
+        </div>
+
+        <div class="logo-container d-md-none">
+            <a href="{{ route('dashboard') }}" class="logo">
+                <img class="pt-2" src="{{ asset('assets/img/billtrix-logo-black.png') }}" width="35%" alt="BillTrix">
+            </a>
+            <div class="userbox" style="float:right !important;">
+                <a href="#" data-bs-toggle="dropdown" style="margin-right: 20px;">
+                    <div class="profile-info">
+                        <span class="name">{{ auth()->user()->name }}</span>
+                        <span class="role">{{ auth()->user()->roles->first()?->name }}</span>
+                    </div>
+                    <i class="fa custom-caret"></i>
+                </a>
+                <div class="dropdown-menu">
+                    <ul class="list-unstyled mb-2">
+                        <li class="divider"></li>
+                        <li><a role="menuitem" href="#changePassword" class="modal-with-zoom-anim"><i class="fas fa-lock"></i> {{ __('Change Password') }}</a></li>
+                        <li>
+                            <form action="{{ route('locale.change') }}" method="POST">@csrf @method('PUT')
+                                <input type="hidden" name="locale" value="{{ app()->getLocale() === 'ur' ? 'en' : 'ur' }}">
+                                <button type="submit" style="background:transparent;border:none;font-size:14px;"><i class="fas fa-language"></i> {{ app()->getLocale() === 'ur' ? __('English') : 'اردو' }}</button>
+                            </form>
+                        </li>
+                        <li class="d-none"><a role="menuitem" href="#"><i class="fas fa-mobile-alt"></i> {{ __('Install app') }}</a></li>
+                        @can('settings.manage')
+                            <li><a role="menuitem" href="{{ route('settings.business') }}"><i class="fas fa-cog"></i> {{ __('Settings') }}</a></li>
+                        @endcan
+                        <li>
+                            <form action="{{ route('logout') }}" method="POST" class="logout-form">@csrf
+                                <button type="submit" style="background:transparent;border:none;font-size:14px;"><i class="fas fa-power-off"></i> {{ __('Logout') }}</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+                <i class="fas fa-bars toggle-sidebar-left" data-toggle-class="sidebar-left-opened" data-target="html" data-fire-event="sidebar-left-opened" aria-label="{{ __('Toggle sidebar') }}"></i>
+            </div>
         </div>
     </header>
 
-    <div class="inner-wrapper">
+    <div class="inner-wrapper cust-pad">
         @include('layouts.sidebar')
 
         <section role="main" class="content-body">
