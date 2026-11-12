@@ -7,6 +7,7 @@
         @csrf @if ($user->exists) @method('PUT') @endif
         <x-input name="name" label="Name" :value="$user->name" required />
         <x-input name="email" label="Email (login)" type="email" :value="$user->email" required />
+        <x-input name="username" label="Username (login)" :value="$user->username" help="Optional. Letters, numbers, - and _ only." />
         <x-input name="phone" label="Phone" :value="$user->phone" />
         <x-select name="locale" label="Language" :options="['en' => 'English', 'ur' => 'اردو (Urdu)']" :value="$user->locale ?? 'en'" />
         <x-select name="role" label="Role" :options="$roles->combine($roles)" :value="$user->roles->first()?->name" required />

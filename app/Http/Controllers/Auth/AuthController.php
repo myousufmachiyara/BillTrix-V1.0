@@ -20,13 +20,17 @@ class AuthController extends Controller
 
     public function login(Request $request): RedirectResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
+        $data = $request->validate([
+            'login' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::attempt($credentials + ['is_active' => true], $request->boolean('remember'))) {
-            return back()->withErrors(['email' => __('These credentials do not match our records.')])->onlyInput('email');
+        // Sign in with either the username or the email address.
+        $field = str_contains($data['login'], '@') ? 'email' : 'username';
+        $credentials = [$field => $data['login'], 'password' => $data['password'], 'is_active' => true];
+
+        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+            return back()->withErrors(['login' => __('These credentials do not match our records.')])->onlyInput('login');
         }
 
         $request->session()->regenerate();

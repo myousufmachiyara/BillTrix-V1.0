@@ -4,9 +4,9 @@
 <form method="POST" action="{{ route('login') }}">
     @csrf
     <div class="form-group mb-3">
-        <label class="form-label">{{ __('Email') }}</label>
+        <label class="form-label">{{ __('Username or email') }}</label>
         <div class="input-group">
-            <input name="email" type="email" class="form-control form-control-lg" value="{{ old('email') }}" required autofocus autocomplete="username">
+            <input name="login" type="text" class="form-control form-control-lg" value="{{ old('login') }}" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false">
             <span class="input-group-text"><i class="fas fa-user"></i></span>
         </div>
     </div>

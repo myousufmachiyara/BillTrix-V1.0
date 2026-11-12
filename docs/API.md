@@ -10,6 +10,8 @@ JSON over HTTPS. Base URL: `https://your-domain/api/v1`. All responses are JSON;
 POST /auth/login
 { "email": "rep@shop.pk", "password": "…", "device_name": "Ali's Galaxy A54" }
 ```
+`email` can be replaced by `"login": "admin"` to sign in with a username.
+
 Response: `token`, `user`, `business` (name, currency, enabled `features`), `permissions`.
 Send `Authorization: Bearer <token>` on every other call. The user's role needs the **API → Use** permission
 (Owner, Manager and Cashier have it by default). Devices can be signed out from *Settings → Users → edit user*.

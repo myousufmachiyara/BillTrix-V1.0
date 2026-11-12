@@ -98,6 +98,7 @@ class UserController extends Controller
         return $request->validate([
             'name' => ['required', 'string', 'max:80'],
             'email' => ['required', 'email', Rule::unique('users')->ignore($user)],
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'alpha_dash', Rule::unique('users')->ignore($user)],
             'phone' => ['nullable', 'string', 'max:30'],
             'locale' => ['nullable', Rule::in(['en', 'ur'])],
             'branch_id' => ['required', $this->owned('branches')],

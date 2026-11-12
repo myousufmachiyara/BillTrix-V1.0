@@ -21,10 +21,17 @@ class CreateBusiness extends Command
         $category = select('Business type', config('billtrix.categories'), default: 'retail');
         $owner = text('Owner name', required: true);
         $email = text('Owner email (login)', required: true, validate: fn ($v) => filter_var($v, FILTER_VALIDATE_EMAIL) ? null : 'Enter a valid email.');
+        $username = text('Username (optional, e.g. admin)', validate: fn ($v) => match (true) {
+            $v === '' => null,
+            ! preg_match('/^[A-Za-z0-9_-]{3,50}$/', $v) => '3–50 letters, numbers, - or _.',
+            \App\Models\User::withoutGlobalScopes()->where('username', $v)->exists() => 'That username is taken.',
+            default => null,
+        });
         $pass = password('Password (min 8)', required: true, validate: fn ($v) => strlen($v) >= 8 ? null : 'At least 8 characters.');
 
-        $user = $provisioner->create(['name' => $name, 'category' => $category], ['name' => $owner, 'email' => $email, 'password' => $pass]);
-        $this->info("Business #{$user->business_id} created. {$email} can now sign in.");
+        $user = $provisioner->create(['name' => $name, 'category' => $category],
+            ['name' => $owner, 'email' => $email, 'username' => $username ?: null, 'password' => $pass]);
+        $this->info("Business #{$user->business_id} created. Sign in with ".($username ?: $email).'.');
 
         return self::SUCCESS;
     }

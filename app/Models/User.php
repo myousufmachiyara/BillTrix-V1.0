@@ -16,7 +16,7 @@ class User extends Authenticatable
 
     protected $attributes = ['is_active' => true];
 
-    protected $fillable = ['business_id', 'branch_id', 'name', 'email', 'phone', 'locale', 'password', 'is_active', 'last_login_at'];
+    protected $fillable = ['business_id', 'branch_id', 'name', 'email', 'username', 'phone', 'locale', 'password', 'is_active', 'last_login_at'];
 
     protected $hidden = ['password', 'remember_token'];
 
