@@ -44,7 +44,11 @@ class DemoModeTest extends TestCase
 
     public function test_login_page_shows_the_demo_form_only_in_demo_mode(): void
     {
-        $this->get('/login')->assertOk()->assertSee(route('demo.start'), false)->assertSee('Staff sign in')->assertDontSee('12345678');
+        $this->get('/login')->assertOk()->assertSee(route('demo.start'), false)->assertDontSee('name="password"', false)->assertDontSee('12345678');
+        $this->get('/admin')->assertOk()->assertSee('name="password"', false)->assertDontSee(route('demo.start'), false);
+
+        // A wrong staff password goes back to /admin, not to the visitor form.
+        $this->post('/login', ['login' => 'nobody', 'password' => 'wrong'])->assertRedirect(route('admin.login'))->assertSessionHasErrors('login');
 
         config(['billtrix.demo.enabled' => false]);
         $this->get('/login')->assertOk()->assertDontSee(route('demo.start'), false);
@@ -75,6 +79,28 @@ class DemoModeTest extends TestCase
         $this->assertSame([1, 2, 'Lahore', 'facebook'], [DemoLead::count(), $lead->visits, $lead->city, $lead->source]);
     }
 
+    public function test_a_new_number_is_asked_for_details_and_a_returning_one_goes_straight_in(): void
+    {
+        // Step 1, new number: no lead yet, the details form appears with the number kept.
+        $this->from('/login')->post('/demo/start', ['phone' => '0330 6505059'])->assertRedirect('/login')->assertSessionHas('demo_step', 'details');
+        $this->assertGuest();
+        $this->assertSame(0, DemoLead::count());
+        $this->withSession(['demo_step' => 'details', '_old_input' => ['phone' => '0330 6505059']])->get('/login')
+            ->assertSee('id="demo-name"', false)->assertSee('0330 6505059');
+
+        // Step 2: details given, signed in.
+        $this->post('/demo/start', $this->form())->assertRedirect(route('dashboard'))->assertCookie('demo_phone');
+        auth()->logout();
+        $this->flushSession();
+
+        // Next visit: the number alone is enough, and nothing they told us is lost.
+        $this->get('/login')->assertDontSee('id="demo-name"', false);
+        $this->post('/demo/start', ['phone' => '+92 330 6505059'])->assertRedirect(route('dashboard'))->assertSessionHas('success', fn ($m) => str_contains($m, 'Welcome back'));
+        $this->assertAuthenticatedAs($this->visitor);
+        $lead = DemoLead::sole();
+        $this->assertSame(['Usman', 'Usman Garments', 'Karachi', 2], [$lead->name, $lead->business_name, $lead->city, $lead->visits]);
+    }
+
     public function test_the_referring_site_is_the_source_when_there_is_no_tag(): void
     {
         $this->get('/login', ['referer' => 'https://www.billtrix.com/features']);
@@ -85,7 +111,7 @@ class DemoModeTest extends TestCase
     public function test_bad_input_and_bots_create_no_lead(): void
     {
         $this->post('/demo/start', $this->form(['phone' => '12345']))->assertSessionHasErrors('phone');
-        $this->post('/demo/start', $this->form(['name' => '']))->assertSessionHasErrors('name');
+        $this->post('/demo/start', $this->form(['name' => '']))->assertSessionHas('demo_step', 'details');
         $this->post('/demo/start', $this->form(['business_type' => 'Spaceships']))->assertSessionHasErrors('business_type');
         $this->post('/demo/start', $this->form(['website' => 'http://spam.example']))->assertRedirect(route('login'));
         $this->assertGuest();

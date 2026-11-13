@@ -158,4 +158,4 @@ Turns an install into a public demo that captures leads. **Never enable it on a 
 2. `php artisan migrate --force`, then `php artisan billtrix:demo-reset --force` once.
 3. Cron: `* * * * * php /path/artisan schedule:run` — the demo reloads at 03:00 every night; leads are kept.
 
-Visitors open `/demo?utm_source=facebook&utm_campaign=nov` (or the login page), enter name + mobile (+ business, city, type) and are signed in as a limited "Demo" user (no settings, users, FBR, backups). You sign in under "Staff sign in" with `admin` and your password; **Demo Leads** in the sidebar lists every visitor with WhatsApp/Call buttons, status, notes and Excel export.
+Visitors open `/demo?utm_source=facebook&utm_campaign=nov` (or the login page), enter name + mobile (+ business, city, type) and are signed in as a limited "Demo" user (no settings, users, FBR, backups). You sign in at `/admin` with `admin` and your password; **Demo Leads** in the sidebar lists every visitor with WhatsApp/Call buttons, status, notes and Excel export.

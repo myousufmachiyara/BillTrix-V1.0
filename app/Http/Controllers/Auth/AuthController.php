@@ -22,6 +22,12 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
+    /** /admin: username + password only, for you and your staff. */
+    public function showStaffLogin(): View
+    {
+        return view('auth.admin');
+    }
+
     public function login(Request $request): RedirectResponse
     {
         $data = $request->validate([
@@ -34,7 +40,9 @@ class AuthController extends Controller
         $credentials = [$field => $data['login'], 'password' => $data['password'], 'is_active' => true];
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            return back()->withErrors(['login' => __('These credentials do not match our records.')])->onlyInput('login');
+            $back = config('billtrix.demo.enabled') ? redirect()->route('admin.login') : back();
+
+            return $back->withErrors(['login' => __('These credentials do not match our records.')])->onlyInput('login');
         }
 
         $request->session()->regenerate();
@@ -76,11 +84,13 @@ class AuthController extends Controller
 
     public function logout(Request $request): RedirectResponse
     {
+        // On the public demo, staff go back to /admin and visitors to the demo form.
+        $staff = config('billtrix.demo.enabled') && ! $request->user()?->isDemoVisitor();
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        return redirect()->route($staff ? 'admin.login' : 'login');
     }
 
     public function setLocale(Request $request): RedirectResponse

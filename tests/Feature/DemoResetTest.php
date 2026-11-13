@@ -48,6 +48,7 @@ class DemoResetTest extends TestCase
         $this->assertAuthenticatedAs($visitor);
         auth()->logout();
         $this->flushSession();
+        $this->get('/admin')->assertOk();
         $this->post('/login', ['login' => 'admin', 'password' => 'MySecret#2026'])->assertRedirect(route('dashboard'));
         $this->get('/demo-leads')->assertOk()->assertSee('Ali')->assertSee('Usman');
         Tenant::forget();

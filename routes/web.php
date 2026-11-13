@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('guest')->group(function () {
     Route::get('login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    // Staff / owner sign-in on its own address (on the public demo, /login is the visitor form).
+    Route::get('admin', [AuthController::class, 'showStaffLogin'])->name('admin.login');
     Route::get('register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
     // Public demo (BILLTRIX_DEMO_MODE): /demo?utm_source=… remembers the source, the form signs the visitor in.

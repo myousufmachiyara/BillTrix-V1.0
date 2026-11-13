@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -33,7 +34,7 @@ class DemoController extends Controller
         }
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:80'],
+            'name' => ['nullable', 'string', 'max:80'],
             'phone' => ['required', 'string', 'max:25'],
             'business_name' => ['nullable', 'string', 'max:120'],
             'city' => ['nullable', 'string', 'max:60'],
@@ -45,6 +46,12 @@ class DemoController extends Controller
             throw ValidationException::withMessages(['phone' => __('Enter a valid mobile number, e.g. 0300 1234567.')]);
         }
 
+        // Returning visitor: the number is enough. New number: ask for the details first.
+        $lead = DemoLead::where('phone', $phone)->first();
+        if (! $lead && trim((string) ($data['name'] ?? '')) === '') {
+            return back()->withInput()->with('demo_step', 'details');
+        }
+
         $demoUser = User::withoutGlobalScopes()->where('username', config('billtrix.demo.username'))->where('is_active', true)->first();
         if (! $demoUser) {
             Log::warning('Demo sign-in failed: no active demo user. Run php artisan billtrix:demo-reset.');
@@ -53,14 +60,14 @@ class DemoController extends Controller
         }
 
         $details = array_filter([
-            'name' => trim($data['name']),
+            'name' => trim((string) ($data['name'] ?? '')),
             'business_name' => trim((string) ($data['business_name'] ?? '')),
             'city' => trim((string) ($data['city'] ?? '')),
             'business_type' => $data['business_type'] ?? null,
         ], fn ($v) => $v !== '' && $v !== null);
         $seen = ['ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 255), 'last_seen_at' => now()];
 
-        $lead = DemoLead::where('phone', $phone)->first();
+        $returning = (bool) $lead;
         if ($lead) {
             $lead->fill($details + $seen);
             $lead->visits++;
@@ -78,8 +85,11 @@ class DemoController extends Controller
         Auth::login($demoUser);
         $request->session()->regenerate();
         session(['demo_lead_id' => $lead->id]);
+        Cookie::queue('demo_phone', $phone, 60 * 24 * 365);   // pre-fills the number next time
 
-        return redirect()->route('dashboard')->with('success', __('Welcome, :name! Try a sale, a purchase or a report — everything here is sample data.', ['name' => trim($data['name'])]));
+        return redirect()->route('dashboard')->with('success', $returning
+            ? __('Welcome back! Try a sale, a purchase or a report — everything here is sample data.')
+            : __('Welcome, :name! Try a sale, a purchase or a report — everything here is sample data.', ['name' => $lead->name]));
     }
 
     /** Ad and link parameters first; otherwise the site that sent the visitor (facebook.com, billtrix.com…). */
