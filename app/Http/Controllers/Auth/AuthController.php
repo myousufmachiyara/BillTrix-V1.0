@@ -13,8 +13,12 @@ use Illuminate\View\View;
 
 class AuthController extends Controller
 {
-    public function showLogin(): View
+    public function showLogin(Request $request): View
     {
+        if (config('billtrix.demo.enabled')) {
+            \App\Http\Controllers\DemoController::rememberSource($request);
+        }
+
         return view('auth.login');
     }
 
@@ -89,6 +93,7 @@ class AuthController extends Controller
 
     public function changePassword(Request $request): RedirectResponse
     {
+        abort_if($request->user()->isDemoVisitor(), 403);
         $request->validate([
             'current_password' => ['required', 'current_password'],
             'password' => ['required', 'confirmed', Password::min(8)],

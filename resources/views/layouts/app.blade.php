@@ -132,6 +132,16 @@
         @include('layouts.sidebar')
 
         <section role="main" class="content-body">
+            @if (auth()->user()?->isDemoVisitor())
+                @php($wa = config('billtrix.demo.whatsapp'))
+                <div class="alert alert-info d-flex flex-wrap align-items-center gap-2 no-print">
+                    <i class="fas fa-flask"></i>
+                    <span>{{ __('You are exploring the BillTrix demo. Try anything — the demo data resets every night.') }}</span>
+                    @if ($wa)
+                        <a class="btn btn-success btn-sm ms-auto" target="_blank" rel="noopener" href="https://wa.me/{{ preg_replace('/^0/', '92', preg_replace('/\D+/', '', $wa)) }}"><i class="fab fa-whatsapp"></i> {{ __('Get BillTrix for your business') }} · {{ $wa }}</a>
+                    @endif
+                </div>
+            @endif
             <div class="bt-pagebar">
                 <h2>{{ __(html_entity_decode(trim($__env->yieldContent('title', 'Dashboard')), ENT_QUOTES)) }}</h2>
                 <div class="d-flex flex-wrap gap-2 no-print">@yield('header-actions')</div>

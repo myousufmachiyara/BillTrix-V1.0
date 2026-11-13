@@ -1,40 +1,48 @@
 @extends('layouts.guest')
-@section('title', __('Sign In'))
+@section('title', config('billtrix.demo.enabled') ? __('Free Demo') : __('Sign In'))
 @section('content')
-<form method="POST" action="{{ route('login') }}">
-    @csrf
-    <div class="form-group mb-3">
-        <label class="form-label">{{ __('Username or email') }}</label>
-        <div class="input-group">
-            <input name="login" type="text" class="form-control form-control-lg" value="{{ old('login') }}" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false">
-            <span class="input-group-text"><i class="fas fa-user"></i></span>
+@if (config('billtrix.demo.enabled'))
+    <p class="mb-3">{{ __('See BillTrix working with real sample data. Enter your details and you will be signed in straight away — no password needed.') }}</p>
+    <form method="POST" action="{{ route('demo.start') }}" novalidate>
+        @csrf
+        <div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+        <div class="form-group mb-3">
+            <label class="form-label" for="demo-name">{{ __('Your name') }} <span class="text-danger">*</span></label>
+            <input id="demo-name" name="name" type="text" class="form-control form-control-lg" value="{{ old('name') }}" required maxlength="80" autocomplete="name" autofocus>
         </div>
-    </div>
-    <div class="form-group mb-3">
-        <label class="form-label">{{ __('Password') }}</label>
-        <div class="input-group">
-            <input name="password" id="password" type="password" class="form-control form-control-lg" required autocomplete="current-password">
-            <button type="button" class="input-group-text toggle-password" id="toggle-password" aria-label="{{ __('Show password') }}" title="{{ __('Show password') }}"
-                data-show="{{ __('Show password') }}" data-hide="{{ __('Hide password') }}" style="cursor:pointer">
-                <i class="fas fa-eye"></i>
-            </button>
+        <div class="form-group mb-3">
+            <label class="form-label" for="demo-phone">{{ __('Mobile / WhatsApp number') }} <span class="text-danger">*</span></label>
+            <input id="demo-phone" name="phone" type="tel" inputmode="tel" class="form-control form-control-lg" value="{{ old('phone') }}" required maxlength="25" placeholder="03XX XXXXXXX" autocomplete="tel">
         </div>
-    </div>
-    <div class="row align-items-center">
-        <div class="col-6">
-            <div class="form-check"><input class="form-check-input" type="checkbox" name="remember" id="remember"><label class="form-check-label" for="remember">{{ __('Remember me') }}</label></div>
+        <div class="form-group mb-3">
+            <label class="form-label" for="demo-business">{{ __('Business name') }}</label>
+            <input id="demo-business" name="business_name" type="text" class="form-control" value="{{ old('business_name') }}" maxlength="120" autocomplete="organization">
         </div>
-        <div class="col-6 text-end"><button type="submit" class="btn btn-primary">{{ __('Sign In') }}</button></div>
-    </div>
-</form>
-<script>
-document.getElementById('toggle-password').addEventListener('click', function () {
-    var input = document.getElementById('password'), show = input.type === 'password', icon = this.querySelector('i');
-    input.type = show ? 'text' : 'password';
-    icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
-    this.setAttribute('aria-label', show ? this.dataset.hide : this.dataset.show);
-    this.title = this.getAttribute('aria-label');
-    input.focus();
-});
-</script>
+        <div class="row g-2">
+            <div class="col-sm-6 mb-3">
+                <label class="form-label" for="demo-city">{{ __('City') }}</label>
+                <input id="demo-city" name="city" type="text" class="form-control" value="{{ old('city') }}" maxlength="60" autocomplete="address-level2">
+            </div>
+            <div class="col-sm-6 mb-3">
+                <label class="form-label" for="demo-type">{{ __('Business type') }}</label>
+                <select id="demo-type" name="business_type" class="form-select">
+                    <option value="">{{ __('Choose…') }}</option>
+                    @foreach (config('billtrix.demo.business_types') as $t)
+                        <option value="{{ $t }}" @selected(old('business_type') === $t)>{{ __($t) }}</option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg w-100"><i class="fas fa-play me-1"></i> {{ __('Open the free demo') }}</button>
+        <p class="text-muted small text-center mt-2 mb-0">{{ __('We only use your number to help you get started with BillTrix.') }}</p>
+    </form>
+    <details class="mt-4 pt-3 border-top" @if ($errors->has('login') || old('login')) open @endif>
+        <summary class="text-muted" style="cursor:pointer">{{ __('Staff sign in') }}</summary>
+        <div class="mt-3">
+            @include('auth.partials.signin')
+        </div>
+    </details>
+@else
+    @include('auth.partials.signin')
+@endif
 @endsection

@@ -39,4 +39,10 @@ class User extends Authenticatable
     {
         return $this->hasRole('Owner');
     }
+
+    /** The shared login every public-demo visitor is signed in as. */
+    public function isDemoVisitor(): bool
+    {
+        return config('billtrix.demo.enabled') && $this->username === config('billtrix.demo.username');
+    }
 }

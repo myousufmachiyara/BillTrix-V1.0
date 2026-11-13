@@ -65,6 +65,27 @@ return [
         'quotation_terms' => "Prices valid for 7 days.\nDelivery within 3 working days of confirmation.",
     ],
 
+    // Public demo (e.g. basic.billtrix.com). Visitors leave their phone number and are signed in to a shared
+    // demo business; every visitor is saved as a lead. Switch on ONLY on the demo install: the nightly reset
+    // wipes all business data.
+    'demo' => [
+        'enabled' => (bool) env('BILLTRIX_DEMO_MODE', false),
+        'nightly_reset' => (bool) env('BILLTRIX_DEMO_RESET', false),
+        'username' => env('BILLTRIX_DEMO_USER', 'demo'),
+        'admin_username' => env('BILLTRIX_DEMO_ADMIN_USER', 'admin'),
+        'admin_password' => env('BILLTRIX_DEMO_ADMIN_PASSWORD'),
+        'whatsapp' => env('BILLTRIX_DEMO_WHATSAPP'),   // shown to demo visitors, e.g. 0330 6505059
+        // Demo visitors get every permission except these.
+        'denied' => ['settings.*', 'users.*', 'roles.*', 'fbr.*', 'audit.*', 'backups.*', 'api.*', 'imports.*'],
+        // Features switched on in the demo business so visitors see everything.
+        'settings' => ['pos' => true, 'pos_shifts' => false, 'multi_warehouse' => true, 'multi_unit' => true, 'price_levels' => true,
+            'credit_limits' => true, 'quotations' => true, 'sales_orders' => true, 'purchase_orders' => true, 'delivery_challans' => true,
+            'customer_prices' => true, 'batches' => true, 'variants' => true],
+        'business_types' => ['General / kiryana store', 'Garments & shoes', 'Wholesale / distribution', 'Hardware, paint & electrical',
+            'Medical & cosmetics', 'Electronics & mobiles', 'Crockery, toys & general items', 'Restaurant / bakery', 'Other'],
+        'statuses' => ['new' => 'New', 'contacted' => 'Contacted', 'interested' => 'Interested', 'converted' => 'Converted', 'not_interested' => 'Not interested'],
+    ],
+
     'presets' => [
         'retail' => ['pos' => true, 'pos_shifts' => true, 'invoice_layout' => 'thermal', 'credit_limits' => false],
         'wholesale' => ['pos' => false, 'multi_unit' => true, 'price_levels' => true, 'credit_limits' => true, 'multi_warehouse' => true,

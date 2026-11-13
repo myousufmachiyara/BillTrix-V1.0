@@ -23,6 +23,11 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // The demo install's owner (not the shared visitor login) sees who tried the demo.
+        \Illuminate\Support\Facades\Gate::define('manage-leads', fn (\App\Models\User $user) => config('billtrix.demo.enabled')
+            && ! $user->isDemoVisitor() && $user->hasRole('Owner'));
+        \Illuminate\Support\Facades\Route::bind('lead', fn ($id) => \App\Models\DemoLead::findOrFail($id));
+
         Relation::enforceMorphMap([
             'invoice' => Invoice::class,
             'party' => Party::class,

@@ -114,6 +114,12 @@
                     </li>
                     @endcanany
 
+                    @can('manage-leads')
+                    <li class="{{ $is('demo-leads.*') }}">
+                        <a class="nav-link" href="{{ route('demo-leads.index') }}"><i class="fas fa-user-plus"></i><span>{{ __('Demo Leads') }}</span></a>
+                    </li>
+                    @endcan
+
                     @canany(['settings.manage', 'users.view', 'roles.view', 'branches.view'])
                     <li class="nav-parent {{ $open('settings.*') }} {{ in_array(request()->route('master'), ['price-levels', 'tax-rates']) ? 'nav-expanded nav-active' : '' }}">
                         <a class="nav-link" href="#"><i class="fas fa-cog"></i><span>{{ __('Settings') }}</span></a>

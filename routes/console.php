@@ -12,3 +12,8 @@ Artisan::command('inspire', function () {
 
 // Nightly database backup (kept for 14 days). Copy storage/app/backups off the server regularly.
 \Illuminate\Support\Facades\Schedule::command('billtrix:backup')->dailyAt('01:30')->withoutOverlapping();
+
+// Public demo only: reload fresh demo data every night (leads are kept). Needs BILLTRIX_DEMO_MODE and BILLTRIX_DEMO_RESET.
+if (config('billtrix.demo.enabled') && config('billtrix.demo.nightly_reset')) {
+    \Illuminate\Support\Facades\Schedule::command('billtrix:demo-reset --force')->dailyAt('03:00')->withoutOverlapping();
+}

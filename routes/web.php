@@ -6,6 +6,8 @@ use App\Http\Controllers\Accounting\PartyPriceController;
 use App\Http\Controllers\Accounting\VoucherController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DemoController;
+use App\Http\Controllers\DemoLeadController;
 use App\Http\Controllers\Inventory\ProductController;
 use App\Http\Controllers\Inventory\StockAdjustmentController;
 use App\Http\Controllers\Inventory\StockTransferController;
@@ -28,6 +30,9 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
     Route::get('register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
+    // Public demo (BILLTRIX_DEMO_MODE): /demo?utm_source=… remembers the source, the form signs the visitor in.
+    Route::get('demo', [DemoController::class, 'enter'])->name('demo.enter');
+    Route::post('demo/start', [DemoController::class, 'start'])->name('demo.start')->middleware('throttle:10,1');
 });
 
 // ── Signed in ──────────────────────────────────────────────────────────
@@ -37,6 +42,12 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::put('my-language', [AuthController::class, 'setLocale'])->name('locale.change');
 
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+    Route::middleware('can:manage-leads')->group(function () {
+        Route::get('demo-leads', [DemoLeadController::class, 'index'])->name('demo-leads.index');
+        Route::get('demo-leads/export', [DemoLeadController::class, 'export'])->name('demo-leads.export');
+        Route::put('demo-leads/{lead}', [DemoLeadController::class, 'update'])->name('demo-leads.update');
+    });
 
     // Settings
     Route::prefix('settings')->name('settings.')->group(function () {

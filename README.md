@@ -149,3 +149,13 @@ public/assets/js/       billtrix.js (common), invoice.js (invoice & order editor
 public/sw.js            service worker (installable app, offline POS)
 tests/Feature/          PostingTest, Phase2Test (orders, challans, POS, registers), Phase3Test, FinalTest (audit, WHT vouchers, batch pick, backups, offline POS), VariantTest (variations end to end), PagesTest (every screen, English and Urdu)
 ```
+
+## Public demo & leads (demo install only)
+
+Turns an install into a public demo that captures leads. **Never enable it on a customer install** — the nightly reset deletes all data.
+
+1. `.env`: `BILLTRIX_DEMO_MODE=true`, `BILLTRIX_DEMO_RESET=true`, `BILLTRIX_DEMO_ADMIN_PASSWORD=<8+ chars>`, `BILLTRIX_DEMO_WHATSAPP="0330 6505059"`
+2. `php artisan migrate --force`, then `php artisan billtrix:demo-reset --force` once.
+3. Cron: `* * * * * php /path/artisan schedule:run` — the demo reloads at 03:00 every night; leads are kept.
+
+Visitors open `/demo?utm_source=facebook&utm_campaign=nov` (or the login page), enter name + mobile (+ business, city, type) and are signed in as a limited "Demo" user (no settings, users, FBR, backups). You sign in under "Staff sign in" with `admin` and your password; **Demo Leads** in the sidebar lists every visitor with WhatsApp/Call buttons, status, notes and Excel export.
