@@ -35,16 +35,24 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        $back = config('billtrix.demo.enabled') ? redirect()->route('admin.login') : back();
+        try {
+            \App\Support\LoginGuard::check($request, $data['login']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $back->withErrors($e->errors())->onlyInput('login');
+        }
+
         // Sign in with either the username or the email address.
         $field = str_contains($data['login'], '@') ? 'email' : 'username';
         $credentials = [$field => $data['login'], 'password' => $data['password'], 'is_active' => true];
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            $back = config('billtrix.demo.enabled') ? redirect()->route('admin.login') : back();
+            \App\Support\LoginGuard::failed($request, $data['login']);
 
             return $back->withErrors(['login' => __('These credentials do not match our records.')])->onlyInput('login');
         }
 
+        \App\Support\LoginGuard::succeeded($request, $data['login']);
         $request->session()->regenerate();
         $request->user()->forceFill(['last_login_at' => now()])->saveQuietly();
 

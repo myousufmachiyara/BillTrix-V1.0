@@ -23,11 +23,14 @@ class AuthController extends Controller
         ]);
 
         $login = $data['login'] ?? $data['email'];
+        \App\Support\LoginGuard::check($request, $login, 'email');
         $user = User::withoutGlobalScopes()->where(str_contains($login, '@') ? 'email' : 'username', $login)->where('is_active', true)->first();
         if (! $user || ! Hash::check($data['password'], $user->password)) {
+            \App\Support\LoginGuard::failed($request, $login);
             throw ValidationException::withMessages(['email' => __('These credentials do not match our records.')]);
         }
 
+        \App\Support\LoginGuard::succeeded($request, $login);
         Tenant::set($user->business_id);
         if (! $user->can('api.use') || ! Tenant::business()->is_active) {
             throw ValidationException::withMessages(['email' => __('This account is not allowed to use the mobile app.')]);

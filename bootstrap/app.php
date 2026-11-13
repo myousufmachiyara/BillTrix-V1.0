@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         // Tenant must be bound before route-model binding resolves scoped models.
         $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, SetTenant::class);
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('dashboard'));
     })
