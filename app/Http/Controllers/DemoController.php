@@ -81,6 +81,14 @@ class DemoController extends Controller
                 'campaign' => session('demo_campaign'),
             ]);
         }
+        
+        // One-time analytics event for the next page (read by partials/tracking-head). No phone or name is sent.
+        session()->flash('demo_signup', [
+            'lead_type' => $returning ? 'returning' : 'new',
+            'business_type' => $lead->business_type,
+            'source' => $lead->source,
+            'campaign' => $lead->campaign,
+        ]);
 
         Auth::login($demoUser);
         $request->session()->regenerate();

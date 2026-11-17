@@ -75,6 +75,7 @@ return [
         'admin_username' => env('BILLTRIX_DEMO_ADMIN_USER', 'admin'),
         'admin_password' => env('BILLTRIX_DEMO_ADMIN_PASSWORD'),
         'whatsapp' => env('BILLTRIX_DEMO_WHATSAPP'),   // shown to demo visitors, e.g. 0330 6505059
+        'gtm_id' => env('BILLTRIX_DEMO_GTM_ID'),
         // Demo visitors get every permission except these.
         'denied' => ['settings.*', 'users.*', 'roles.*', 'fbr.*', 'audit.*', 'backups.*', 'api.*', 'imports.*'],
         // Features switched on in the demo business so visitors see everything.
