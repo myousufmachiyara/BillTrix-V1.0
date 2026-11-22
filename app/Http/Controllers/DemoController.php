@@ -43,13 +43,29 @@ class DemoController extends Controller
 
         $phone = DemoLead::normalizePhone($data['phone']);
         if (! $phone) {
-            throw ValidationException::withMessages(['phone' => __('Enter a valid mobile number, e.g. 0300 1234567.')]);
+            throw ValidationException::withMessages(['phone' => __('Enter your real mobile number, e.g. 0300 1234567. We send your demo help on WhatsApp.')]);
         }
 
         // Returning visitor: the number is enough. New number: ask for the details first.
         $lead = DemoLead::where('phone', $phone)->first();
         if (! $lead && trim((string) ($data['name'] ?? '')) === '') {
             return back()->withInput()->with('demo_step', 'details');
+        }
+
+        // New visitor: every detail is required and must look real, so the leads list holds business owners, not test text.
+        if (! $lead) {
+            $request->validate([
+                'name' => ['required', 'string', 'min:3', 'max:80', 'regex:/^\p{L}[\p{L}\s.\'-]*$/u', $this->notGibberish(...)],
+                'business_name' => ['required', 'string', 'min:2', 'max:120', 'regex:/\p{L}{2,}/u', 'not_regex:/\d{5}-?\d{7}-?\d/', $this->notGibberish(...)],
+                'city' => ['required', 'string', 'min:3', 'max:60', 'regex:/^\p{L}[\p{L}\s.-]*$/u', $this->notGibberish(...)],
+                'business_type' => ['required', Rule::in(config('billtrix.demo.business_types'))],
+            ], [
+                'name.regex' => __('Please enter your real name (letters only).'),
+                'business_name.regex' => __('Please enter your shop or company name.'),
+                'business_name.not_regex' => __('Please enter your shop or company name, not an ID number.'),
+                'city.regex' => __('Please enter your city name (letters only).'),
+                'business_type.required' => __('Please choose your type of business.'),
+            ]);
         }
 
         $demoUser = User::withoutGlobalScopes()->where('username', config('billtrix.demo.username'))->where('is_active', true)->first();
@@ -81,7 +97,7 @@ class DemoController extends Controller
                 'campaign' => session('demo_campaign'),
             ]);
         }
-        
+
         // One-time analytics event for the next page (read by partials/tracking-head). No phone or name is sent.
         session()->flash('demo_signup', [
             'lead_type' => $returning ? 'returning' : 'new',
@@ -98,6 +114,16 @@ class DemoController extends Controller
         return redirect()->route('dashboard')->with('success', $returning
             ? __('Welcome back! Try a sale, a purchase or a report — everything here is sample data.')
             : __('Welcome, :name! Try a sale, a purchase or a report — everything here is sample data.', ['name' => $lead->name]));
+    }
+
+    /** Rejects keyboard mashing such as "Xxxx", "Gchvh" or "aaa": three repeated letters, or Latin text with no vowel. */
+    private function notGibberish(string $attribute, mixed $value, \Closure $fail): void
+    {
+        $v = trim((string) $value);
+        $latinOnly = preg_match('/^[A-Za-z\s.\'-]+$/', $v);
+        if (preg_match('/(\p{L})\1\1/iu', $v) || ($latinOnly && ! preg_match('/[aeiouy]/i', $v))) {
+            $fail(__('Please enter real details so we can help you set up.'));
+        }
     }
 
     /** Ad and link parameters first; otherwise the site that sent the visitor (facebook.com, billtrix.com…). */
