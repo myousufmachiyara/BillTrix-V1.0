@@ -21,17 +21,17 @@
                 <input id="demo-name" name="name" type="text" class="form-control form-control-lg @error('name') is-invalid @enderror" value="{{ old('name') }}" required maxlength="80" autocomplete="name" autofocus>
             </div>
             <div class="mb-3">
-                <label class="form-label" for="demo-business">{{ __('Business name') }}</label>
-                <input id="demo-business" name="business_name" type="text" class="form-control" value="{{ old('business_name') }}" maxlength="120" autocomplete="organization">
+                <label class="form-label" for="demo-business">{{ __('Shop / company name') }} <span class="text-danger">*</span></label>
+                <input id="demo-business" name="business_name" type="text" class="form-control @error('business_name') is-invalid @enderror" value="{{ old('business_name') }}" required maxlength="120" autocomplete="organization">
             </div>
             <div class="row g-2">
                 <div class="col-sm-6 mb-3">
-                    <label class="form-label" for="demo-city">{{ __('City') }}</label>
-                    <input id="demo-city" name="city" type="text" class="form-control" value="{{ old('city') }}" maxlength="60" autocomplete="address-level2">
+                    <label class="form-label" for="demo-city">{{ __('City') }} <span class="text-danger">*</span></label>
+                    <input id="demo-city" name="city" type="text" class="form-control @error('city') is-invalid @enderror" value="{{ old('city') }}" required maxlength="60" autocomplete="address-level2">
                 </div>
                 <div class="col-sm-6 mb-3">
-                    <label class="form-label" for="demo-type">{{ __('Business type') }}</label>
-                    <select id="demo-type" name="business_type" class="form-select @error('business_type') is-invalid @enderror">
+                    <label class="form-label" for="demo-type">{{ __('Business type') }} <span class="text-danger">*</span></label>
+                    <select id="demo-type" name="business_type" class="form-select @error('business_type') is-invalid @enderror" required>
                         <option value="">{{ __('Choose…') }}</option>
                         @foreach (config('billtrix.demo.business_types') as $t)
                             <option value="{{ $t }}" @selected(old('business_type') === $t)>{{ __($t) }}</option>
@@ -43,7 +43,7 @@
         @else
             <button type="submit" class="btn btn-primary btn-lg w-100">{{ __('Continue') }} <i class="fas fa-arrow-right ms-1"></i></button>
         @endif
-        <p class="text-muted small text-center mt-2 mb-0">{{ __('We only use your number to help you get started with BillTrix.') }}</p>
+        <p class="text-muted small text-center mt-2 mb-0">{{ __('For business owners. We will WhatsApp you to help set BillTrix up for your business.') }}</p>
     </form>
 @else
     @include('auth.partials.signin')

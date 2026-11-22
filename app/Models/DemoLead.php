@@ -25,13 +25,23 @@ class DemoLead extends Model
         $raw = trim((string) $raw);
         $digits = preg_replace('/\D+/', '', $raw);
         if (preg_match('/^(?:0092|92|0)?(3\d{9})$/', $digits, $m)) {
-            return '0'.$m[1];
+            return self::looksFake('0'.$m[1]) ? null : '0'.$m[1];
         }
         if (str_starts_with($raw, '+') && strlen($digits) >= 10 && strlen($digits) <= 15) {
             return '+'.$digits;
         }
 
         return null;
+    }
+
+    /** Numbers people type to get past the form: 0300 0000000, 0333 3333333, 0300 1234567 and the like. */
+    public static function looksFake(string $phone): bool
+    {
+        $last7 = substr($phone, -7);
+
+        return (bool) preg_match('/(\d)\1{6}/', $phone)                       // seven of the same digit in a row
+            || in_array($last7, ['1234567', '7654321', '0123456', '9876543'], true)
+            || count(array_unique(str_split(substr($phone, 4)))) <= 2;          // e.g. 0300 1212121
     }
 
     /** wa.me link: Pakistani numbers in international form. */
